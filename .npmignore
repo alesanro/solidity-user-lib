@@ -1,0 +1,13 @@
+*.log
+*.bac
+npm-debug.log
+
+build/
+test/
+migrations/
+.gitattributes
+.es*
+.solium*
+truffle*
+contracts/helpers/
+contracts/migration/
