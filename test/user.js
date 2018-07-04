@@ -103,6 +103,13 @@ contract("User Workflow", accounts => {
 				)
 			})
 
+			it("should have a contract owner", async () => {
+				assert.equal(
+					await contracts.userBackend.contractOwner(),
+					users.contractOwner
+				)
+			})
+
 			it("should THROW on updating user proxy", async () => {
 				const userProxy = "0xffffffffffffffffffffffffffffffffffffffff"
 				await contracts.userBackend.setUserProxy(userProxy, { from: users.contractOwner, }).then(assert.fail, () => true)
@@ -133,6 +140,25 @@ contract("User Workflow", accounts => {
 			it("should THROW on updating backend", async () => {
 				const newBackend = "0xffffffffffffffffffffffffffffffffffffffff"
 				await contracts.userBackend.updateBackend(newBackend, { from: users.contractOwner, }).then(assert.fail, () => true)
+			})
+
+			it("should be able to transfer contract ownership", async () => {
+				const newOwner = users.user3
+				await contracts.userBackend.transferOwnership(newOwner, { from: users.contractOwner, })
+				assert.equal(await contracts.userBackend.contractOwner.call(), newOwner)
+
+				await reverter.promisifyRevert()
+			})
+
+			it("should be able to change&claim contract ownership", async () => {
+				const newOwner = users.user3
+				await contracts.userBackend.changeContractOwnership(newOwner, { from: users.contractOwner, })
+				assert.isTrue((await contracts.userBackend.claimContractOwnership.call({ from: newOwner, })))
+
+				await contracts.userBackend.claimContractOwnership({ from: newOwner, })
+				assert.equal(await contracts.userBackend.contractOwner.call(), newOwner)
+
+				await reverter.promisifyRevert()
 			})
 		})
 	})
@@ -227,8 +253,9 @@ contract("User Workflow", accounts => {
 			)
 		})
 
-		it("user should be able to update recovery contract", async () => {
-			const newRecovery = users.user3
+		const newRecovery = users.user3
+
+		it("user should be able to recover with OK code", async () => {
 			const oldRecovery = users.recovery
 			const newUser = users.user2
 			await UserInterface.at(userRouterAddress).setRecoveryContract(newRecovery, { from: user, })
@@ -241,6 +268,19 @@ contract("User Workflow", accounts => {
 				(await UserInterface.at(userRouterAddress).recoverUser.call(newUser, { from: newRecovery, })).toNumber(),
 				ErrorScope.OK
 			)
+		})
+
+		it("user should be able to recover", async () => {
+			await reverter.promisifySnapshot()
+			const snapshotId = reverter.snapshotId
+
+			const newUser = users.user2
+			await UserInterface.at(userRouterAddress).recoverUser(newUser, { from: newRecovery, })
+			assert.equal(await Owned.at(userRouterAddress).contractOwner.call(), newUser)
+			assert.isTrue(await UserInterface.at(userRouterAddress).isOwner(newUser), "current contract owner should be in multisig")
+			assert.isFalse(await UserInterface.at(userRouterAddress).isOwner(user), "previous contract owner should not be in multisig")
+
+			await reverter.promisifyRevert(snapshotId)
 		})
 
 		it("anyone should NOT be able to update an oracle with UNAUTHORIZED code", async () => {
@@ -267,6 +307,38 @@ contract("User Workflow", accounts => {
 				await UserInterface.at(userRouterAddress).getOracle.call(),
 				newOracle
 			)
+		})
+
+		const newUser = users.user2
+
+		it("a new owner should not be a multisig owner", async () => {
+			assert.isTrue(await UserInterface.at(userRouterAddress).isOwner(user))
+			assert.isFalse(await UserInterface.at(userRouterAddress).isOwner(newUser))
+		})
+
+		it("should be able to transfer a contract ownership to another user", async () => {
+			assert.notEqual(await Owned.at(userRouterAddress).contractOwner.call(), newUser)
+
+			await Owned.at(userRouterAddress).transferOwnership(newUser, { from: user, })
+			assert.equal(await Owned.at(userRouterAddress).contractOwner.call(), newUser)
+		})
+
+		it("multisig owner should change with ownership transfer", async () => {
+			assert.isTrue(await UserInterface.at(userRouterAddress).isOwner(newUser), "new contract owner should be in multisig")
+			assert.isFalse(await UserInterface.at(userRouterAddress).isOwner(user), "old contract owner should not be in multisig")
+		})
+
+		it("should be able to change&claim contract ownership", async () => {
+			await Owned.at(userRouterAddress).changeContractOwnership(user, { from: newUser, })
+			assert.isTrue(await Owned.at(userRouterAddress).claimContractOwnership.call({ from: user, }))
+
+			await Owned.at(userRouterAddress).claimContractOwnership({ from: user, })
+			assert.equal(await Owned.at(userRouterAddress).contractOwner.call(), user)
+		})
+
+		it("multisig owner should change with ownership transfer", async () => {
+			assert.isTrue(await UserInterface.at(userRouterAddress).isOwner(user), "current contract owner should be in multisig")
+			assert.isFalse(await UserInterface.at(userRouterAddress).isOwner(newUser), "previous contract owner should not be in multisig")
 		})
 	})
 
@@ -704,6 +776,53 @@ contract("User Workflow", accounts => {
 
 					it("should have updated contract owner", async () => {
 						assert.equal(await Owned.at(userRouter.address).contractOwner.call(), newUserOwner)
+					})
+
+					it("should have updated multisig owners", async () => {
+						assert.isTrue(await userRouter.isOwner(newUserOwner))
+						assert.isFalse(await userRouter.isOwner(user))
+					})
+				})
+
+				describe("change contract ownership", () => {
+					const newUserOwner = users.user3
+
+					context("with transferOwnership", () => {
+						after(async () => {
+							await reverter.promisifyRevert()
+						})
+
+						it("should have valid contract owner", async () => {
+							assert.equal(await Owned.at(userRouter.address).contractOwner.call(), user)
+						})
+
+						it("should THROW NOT allow to submit transfer of contract ownership by a contract owner", async () => {
+							await Owned.at(userRouter.address).transferOwnership(newUserOwner, { from: user, }).then(assert.fail, () => true)
+						})
+
+						it("should NOT update multisig owners", async () => {
+							assert.isFalse(await userRouter.isOwner(newUserOwner))
+							assert.isTrue(await userRouter.isOwner(user))
+						})
+					})
+
+					context("with change&claim", () => {
+						after(async () => {
+							await reverter.promisifyRevert()
+						})
+
+						it("should have valid contract owner", async () => {
+							assert.equal(await Owned.at(userRouter.address).contractOwner.call(), user)
+						})
+
+						it("should THROW and NOT allow to submit transfer of contract ownership by a contract owner", async () => {
+							await Owned.at(userRouter.address).changeContractOwnership(newUserOwner, { from: user, }).then(assert.fail, () => true)
+						})
+
+						it("should NOT update multisig owners", async () => {
+							assert.isFalse(await userRouter.isOwner(newUserOwner))
+							assert.isTrue(await userRouter.isOwner(user))
+						})
 					})
 				})
 

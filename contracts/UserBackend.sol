@@ -19,8 +19,6 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     bytes32 public version = "1.0.0";
 
     modifier onlyMultiowned(address _initiator) {
-        require(_allowDelegateCall(), "Only delegatecall is allowed"); // make sure this is used by delegatecall
-
         if ((!use2FA && msg.sender == _initiator)
             || msg.sender == address(this)
         ) {
@@ -33,6 +31,11 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
                 return(0, 32)
             }
         }
+    }
+
+    modifier only2FADisabled {
+        require(!use2FA, "2FA should be disabled");
+        _;
     }
 
     modifier onlyRecoveryContract {
@@ -54,6 +57,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
 
     function init(address _oracle) 
     onlyCall
+    onlyContractOwner
     external
     returns (uint)
     {
@@ -166,45 +170,47 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     }
 
     function transferOwnership(address _newOwner) 
+    only2FADisabled
     public 
-    onlyMultiowned(contractOwner)
     returns (bool _result) 
     {
-        if (_allowDelegateCall()) {
-            address _oldContractOwner = contractOwner;
-            _result = super.transferOwnership(_newOwner);
-            if (_result) {
-                this.replaceOwner(_oldContractOwner, _newOwner);
-            }
-
-            return _result;
+        if (!_allowDelegateCall()) {
+            return super.transferOwnership(_newOwner);
         } 
 
-        return super.transferOwnership(_newOwner);
+        address _oldContractOwner = contractOwner;
+        _result = super.transferOwnership(_newOwner);
+        if (_result) {
+            this.replaceOwner(_oldContractOwner, _newOwner);
+        }
+
+        return _result;
     }
 
     function changeContractOwnership(address _to)
+    only2FADisabled
     public
-    onlyMultiowned(contractOwner)
     returns (bool)
     {
         return super.changeContractOwnership(_to);
     }
 
     function claimContractOwnership()
+    only2FADisabled
     public
     returns (bool _result)
     {
-        if (_allowDelegateCall()) {
-            address _oldContractOwner = contractOwner;
-            _result = super.claimContractOwnership();
-            if (_result) {
-                this.replaceOwner(_oldContractOwner, contractOwner);
-            }
-            return _result;
+        if (!_allowDelegateCall()) {
+            return super.claimContractOwnership();
+        }
+        
+        address _oldContractOwner = contractOwner;
+        _result = super.claimContractOwnership();
+        if (_result) {
+            this.replaceOwner(_oldContractOwner, contractOwner);
         }
 
-        return super.claimContractOwnership();
+        return _result;
     }
 
     function _allowDelegateCall() private view returns (bool) {
