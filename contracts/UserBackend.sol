@@ -19,7 +19,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     bytes32 public version = "1.0.0";
 
     modifier onlyMultiowned(address _initiator) {
-        require(_allowDelegateCall()); // make sure this is used by delegatecall
+        require(_allowDelegateCall(), "Only delegatecall is allowed"); // make sure this is used by delegatecall
 
         if ((!use2FA && msg.sender == _initiator)
             || msg.sender == address(this)
@@ -48,7 +48,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     }
 
     modifier onlyCall {
-        require(_allowDelegateCall());
+        require(_allowDelegateCall(), "Only delegatecall is allowed");
         _;
     }
 
@@ -67,7 +67,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     external
     returns (uint) 
     {
-        require(getOracle() != 0x0);
+        require(getOracle() != 0x0, "Oracle must be set before 2FA activation");
 
         if (use2FA != _enabled) {
             use2FA = _enabled;
@@ -99,7 +99,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     external
     returns (uint)
     {
-        require(_oracle != 0x0);
+        require(_oracle != 0x0, "Oracle address should not be 0x0");
 
         _setOracle(_oracle);
         return OK;
@@ -110,7 +110,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     onlyIssuer
     external
     returns (uint) {
-        require(_newBackend != 0x0);
+        require(_newBackend != 0x0, "Backend should not be 0x0");
 
         backend = _newBackend;
         return OK;
@@ -122,7 +122,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     public 
     returns (uint) 
     {
-        require(_recoveryContract != 0x0);
+        require(_recoveryContract != 0x0, "Recovery contract address should not be 0x0");
 
         recoveryContract = _recoveryContract;
         return OK;
@@ -142,7 +142,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     public
     returns (uint) 
     {
-        require(newAddress != 0x0);
+        require(newAddress != 0x0, "Recovered user should not be 0x0");
 
         contractOwner = newAddress;
         return OK;

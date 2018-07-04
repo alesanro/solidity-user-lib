@@ -33,56 +33,56 @@ contract MultiSig {
 
     modifier onlySelf() {
         if (msg.sender != address(this)) {
-            revert();
+            revert("[MultiSig]: Only 'this' allowed to call");
         }
         _;
     }
 
     modifier ownerDoesNotExist(address owner) {
         if (isOwner[owner]) {
-            revert();
+            revert("[MultiSig]: Owner should not exist");
         }
         _;
     }
 
     modifier ownerExists(address owner) {
         if (!isOwner[owner]) {
-            revert();
+            revert("[MultiSig]: owner should not exist");
         }
         _;
     }
 
     modifier transactionExists(uint transactionId) {
         if (transactions[transactionId].destination == 0) {
-            revert();
+            revert("[MultiSig]: tx should exist");
         }
         _;
     }
 
     modifier confirmed(uint transactionId, address owner) {
         if (!confirmations[transactionId][owner]) {
-            revert();
+            revert("[MultiSig]: tx should be confirmed");
         }
         _;
     }
 
     modifier notConfirmed(uint transactionId, address owner) {
         if (confirmations[transactionId][owner]) {
-            revert();
+            revert("[MultiSig]: tx should not be confirmed");
         }
         _;
     }
 
     modifier notExecuted(uint transactionId) {
         if (transactions[transactionId].executed) {
-            revert();
+            revert("[MultiSig]: tx should not be executed");
         }
         _;
     }
 
     modifier notNull(address _address) {
         if (_address == 0x0) {
-            revert();
+            revert("[MultiSig]: address should not be 0x0");
         }
         _;
     }
@@ -93,7 +93,7 @@ contract MultiSig {
             || _required == 0
             || ownerCount == 0
         ) {
-            revert();
+            revert("[MultiSig]: valid multisig requirement is not met");
         }
         _;
     }
@@ -122,12 +122,12 @@ contract MultiSig {
     internal
     validRequirement(_owners.length, _required)
     {
-        require(required == 0);
+        require(required == 0, "[MultiSig]: 'required' should not be initialized");
         owners.length = 0;
 
         for (uint i = 0; i < _owners.length; ++i) {
             if (isOwner[_owners[i]] || _owners[i] == 0) {
-                revert();
+                revert("[MultiSig]: owner should not be skipped");
             }
             isOwner[_owners[i]] = true;
         }
