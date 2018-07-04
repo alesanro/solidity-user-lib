@@ -17,7 +17,7 @@ contract UserInterface is MultiSig {
     function set2FA(bool _enabled) external returns (uint);
     function getOracle() external view returns (address);
     function setOracle(address _oracle) external returns (uint);
-    function updateBackend(address _newBackend) external returns (uint);
+    function updateBackendProvider(address _newBackend) external returns (uint);
     function setRecoveryContract(address _recovery) external returns (uint);
     function getRecoveryContract() external view returns (address);
     function recoverUser(address _newAddess) external returns (uint);

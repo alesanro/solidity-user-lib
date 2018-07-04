@@ -1,4 +1,5 @@
 const UserBackend = artifacts.require("UserBackend")
+const UserBackendProvider = artifacts.require("UserBackendProvider")
 const BumpedUserBackend = artifacts.require("BumpedUserBackend")
 const UserRouter = artifacts.require("UserRouter")
 const UserProxy = artifacts.require("UserProxy")
@@ -32,6 +33,7 @@ contract("User Workflow", accounts => {
 		storage: null,
 		storageManager: null,
 		userBackend: null,
+		userBackendProvider: null,
 		userFactory: null,
 		rolesLibrary: null,
 		mock: null,
@@ -52,12 +54,16 @@ contract("User Workflow", accounts => {
 
 		contracts.userBackend = await UserBackend.new({ from: users.contractOwner, })
 
+
 		contracts.rolesLibrary = await Roles2Library.new(contracts.storage.address, "RolesLib", { from: users.contractOwner, })
 		await contracts.storageManager.giveAccess(contracts.rolesLibrary.address, "RolesLib", { from: users.contractOwner, })
 		await contracts.rolesLibrary.setRootUser(users.contractOwner, true, { from: users.contractOwner, })
 
+		contracts.userBackendProvider = await UserBackendProvider.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
+		await contracts.userBackendProvider.setUserBackend(contracts.userBackend.address, { from: users.contractOwner, })
+
 		contracts.userFactory = await UserFactory.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
-		await contracts.userFactory.setUserBackend(contracts.userBackend.address, { from: users.contractOwner, })
+		await contracts.userFactory.setUserBackendProvider(contracts.userBackendProvider.address, { from: users.contractOwner, })
 		await contracts.userFactory.setOracleAddress(users.oracle, { from: users.contractOwner, })
 
 		contracts.mock = await Mock.new()
@@ -83,10 +89,10 @@ contract("User Workflow", accounts => {
 				)
 			})
 
-			it("should have pre-setup backend", async () => {
+			it("should have pre-setup backend provider", async () => {
 				assert.equal(
-					await contracts.userFactory.userBackend(),
-					contracts.userBackend.address
+					await contracts.userFactory.userBackendProvider(),
+					contracts.userBackendProvider.address
 				)
 			})
 		})
@@ -108,6 +114,13 @@ contract("User Workflow", accounts => {
 					await contracts.userBackend.contractOwner(),
 					users.contractOwner
 				)
+			})
+
+			it("should have default values for other fields", async () => {
+				assert.isFalse(await contracts.userBackend.use2FA.call())
+				assert.equal(await contracts.userBackend.backendProvider.call(), utils.zeroAddress)
+				assert.equal(await contracts.userBackend.issuer.call(), utils.zeroAddress)
+				assert.equal(await contracts.userBackend.getUserProxy.call(), utils.zeroAddress)
 			})
 
 			it("should THROW on updating user proxy", async () => {
@@ -139,7 +152,7 @@ contract("User Workflow", accounts => {
 
 			it("should THROW on updating backend", async () => {
 				const newBackend = "0xffffffffffffffffffffffffffffffffffffffff"
-				await contracts.userBackend.updateBackend(newBackend, { from: users.contractOwner, }).then(assert.fail, () => true)
+				await contracts.userBackend.updateBackendProvider(newBackend, { from: users.contractOwner, }).then(assert.fail, () => true)
 			})
 
 			it("should be able to transfer contract ownership", async () => {
@@ -159,6 +172,50 @@ contract("User Workflow", accounts => {
 				assert.equal(await contracts.userBackend.contractOwner.call(), newOwner)
 
 				await reverter.promisifyRevert()
+			})
+		})
+
+		describe("user backend provider", () => {
+
+			afterEach(async () => {
+				await reverter.promisifyRevert()
+			})
+
+			it("should have non-null userBackend value", async () => {
+				assert.notEqual(
+					await contracts.userBackendProvider.getUserBackend.call(),
+					utils.zeroAddress
+				)
+			})
+
+			it("should protect setUserBackend by auth", async () => {
+				const caller = users.user3
+				const newUserBackend = "0x0000ffffffffffffffffffffffffffffffff0000"
+
+				await contracts.userBackendProvider.setRoles2Library(contracts.mock.address)
+				await contracts.mock.expect(
+					contracts.userBackendProvider.address,
+					0,
+					contracts.rolesLibrary.contract.canCall.getData(caller, contracts.userBackendProvider.address, contracts.userBackendProvider.contract.setUserBackend.getData(0x0).slice(0, 10)),
+					await contracts.mock.convertUIntToBytes32(1)
+				)
+
+				assert.equal(
+					(await contracts.userBackendProvider.setUserBackend.call(newUserBackend, { from: caller, })).toNumber(),
+					ErrorScope.OK
+				)
+
+				await contracts.userBackendProvider.setUserBackend(newUserBackend, { from: caller, })
+				await assertExpectations()
+
+				assert.equal(
+					await contracts.userBackendProvider.getUserBackend.call(),
+					newUserBackend
+				)
+			})
+
+			it("should THROW and NOT allow to set 0x0 to userBackend", async () => {
+				await contracts.userBackendProvider.setUserBackend(utils.zeroAddress, { from: users.contractOwner, }).then(assert.fail, () => true)
 			})
 		})
 	})
@@ -208,8 +265,8 @@ contract("User Workflow", accounts => {
 
 		it("user should have issuer and backend", async () => {
 			assert.equal(
-				(await UserRouter.at(userRouterAddress).backend.call()),
-				contracts.userBackend.address
+				(await UserRouter.at(userRouterAddress).backendProvider.call()),
+				contracts.userBackendProvider.address
 			)
 			assert.equal(
 				(await UserRouter.at(userRouterAddress).issuer.call()),
@@ -436,7 +493,6 @@ contract("User Workflow", accounts => {
 		})
 
 		describe("backend", () => {
-
 			let newUserBackend
 
 			before(async () => {
@@ -447,15 +503,8 @@ contract("User Workflow", accounts => {
 				await reverter.promisifyRevert()
 			})
 
-			it("and have up to date backend address", async () => {
-				assert.equal(await UserRouter.at(userRouter.address).backend.call(), contracts.userBackend.address)
-			})
-
-			it("and should have different versions between the current and a new backend", async () => {
-				assert.notEqual(
-					await contracts.userBackend.version.call(),
-					await newUserBackend.version.call()
-				)
+			it("and have up to date backend provider address", async () => {
+				assert.equal(await UserRouter.at(userRouter.address).backendProvider.call(), contracts.userBackendProvider.address)
 			})
 
 			it("and forward function should NOT have 'BumpedUserBackendEvent' event emitted", async () => {
@@ -474,46 +523,12 @@ contract("User Workflow", accounts => {
 				}
 			})
 
-			it("where anyone should NOT be able to update backend by himself with UNAUTHORIZED code", async () => {
+			it("should update user backend in user backend provider", async () => {
+				await contracts.userBackendProvider.setUserBackend(newUserBackend.address, { from: users.contractOwner, })
 				assert.equal(
-					(await userRouter.updateBackend.call(newUserBackend.address, { from: users.user2, })).toNumber(),
-					ErrorScope.UNAUTHORIZED
+					await contracts.userBackendProvider.getUserBackend.call(),
+					newUserBackend.address
 				)
-			})
-
-			it("where user should NOT be able to update backend by himself with UNAUTHORIZED code", async () => {
-				assert.equal(
-					(await userRouter.updateBackend.call(newUserBackend.address, { from: user, })).toNumber(),
-					ErrorScope.UNAUTHORIZED
-				)
-			})
-
-			it("and should have the same backend address in user factory", async () => {
-				assert.equal(await contracts.userFactory.userBackend.call(), contracts.userBackend.address)
-			})
-
-			it("where issuer should NOT be able to update backend to the same version with USER_FACTORY_INVALID_BACKEND_VERSION code", async () => {
-				assert.equal(
-					(await contracts.userFactory.updateBackendForUser.call(userRouter.address, { from: users.contractOwner, })).toNumber(),
-					ErrorScope.USER_FACTORY_INVALID_BACKEND_VERSION
-				)
-			})
-
-			it("and base backend should be updated in user factory first", async () => {
-				await contracts.userFactory.setUserBackend(newUserBackend.address, { from: users.contractOwner, })
-				assert.equal(await contracts.userFactory.userBackend.call(), newUserBackend.address)
-			})
-
-			it("where issuer should be able to update backend to the newest version with OK code", async () => {
-				assert.equal(
-					(await contracts.userFactory.updateBackendForUser.call(userRouter.address, { from: users.contractOwner, })).toNumber(),
-					ErrorScope.OK
-				)
-			})
-
-			it("where issuer should be able to update backend to the newest version", async () => {
-				await contracts.userFactory.updateBackendForUser(userRouter.address, { from: users.contractOwner, })
-				assert.equal(await UserRouter.at(userRouter.address).backend.call(), newUserBackend.address)
 			})
 
 			it("and forward function should have 'BumpedUserBackendEvent' event emitted", async () => {
@@ -530,6 +545,90 @@ contract("User Workflow", accounts => {
 					const event = (await eventHelpers.findEvent([ newUserBackend, userRouter, ], tx, "BumpedUserBackendEvent"))[0]
 					assert.isDefined(event)
 				}
+			})
+		})
+
+		describe("backend provider", () => {
+			let newUserBackendProvider
+			let snapshotId
+
+			before(async () => {
+				newUserBackendProvider = await UserBackendProvider.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
+				await newUserBackendProvider.setUserBackend(contracts.userBackend.address, { from: users.contractOwner, })
+
+				snapshotId = reverter.snapshotId
+				await reverter.promisifySnapshot()
+			})
+
+			after(async () => {
+				await reverter.promisifyRevert(snapshotId)
+			})
+
+			it("and have up to date backend provider address", async () => {
+				assert.equal(await UserRouter.at(userRouter.address).backendProvider.call(), contracts.userBackendProvider.address)
+			})
+
+			it("where anyone should NOT be able to update backend by himself with UNAUTHORIZED code", async () => {
+				assert.equal(
+					(await userRouter.updateBackendProvider.call(newUserBackendProvider.address, { from: users.user2, })).toNumber(),
+					ErrorScope.UNAUTHORIZED
+				)
+			})
+
+			it("and should protect setUserBackendProvider function with auth", async () => {
+				const caller = users.user2
+
+				await reverter.promisifySnapshot()
+
+				await contracts.userFactory.setRoles2Library(contracts.mock.address)
+				await contracts.mock.expect(
+					contracts.userFactory.address,
+					0,
+					contracts.rolesLibrary.contract.canCall.getData(caller, contracts.userFactory.address, contracts.userFactory.contract.setUserBackendProvider.getData(0x0).slice(0, 10)),
+					await contracts.mock.convertUIntToBytes32(ErrorScope.OK)
+				)
+				assert.equal(
+					(await contracts.userFactory.setUserBackendProvider.call(newUserBackendProvider.address, { from: caller, })).toNumber(),
+					ErrorScope.OK
+				)
+
+				await contracts.userFactory.setUserBackendProvider(newUserBackendProvider.address, { from: caller, })
+				await assertExpectations()
+
+				await reverter.promisifyRevert()
+			})
+
+			it("and base backend provider should be updated in user factory first", async () => {
+				await contracts.userFactory.setUserBackendProvider(newUserBackendProvider.address, { from: users.contractOwner, })
+				assert.equal(await contracts.userFactory.userBackendProvider.call(), newUserBackendProvider.address)
+			})
+
+			it("and should protect updateBackendProviderForUser function with auth", async () => {
+				const caller = users.user2
+
+				await reverter.promisifySnapshot()
+
+				await contracts.userFactory.setRoles2Library(contracts.mock.address)
+				await contracts.mock.expect(
+					contracts.userFactory.address,
+					0,
+					contracts.rolesLibrary.contract.canCall.getData(caller, contracts.userFactory.address, contracts.userFactory.contract.updateBackendProviderForUser.getData(0x0).slice(0, 10)),
+					await contracts.mock.convertUIntToBytes32(ErrorScope.OK)
+				)
+				assert.equal(
+					(await contracts.userFactory.updateBackendProviderForUser.call(userRouter.address, { from: caller, })).toNumber(),
+					ErrorScope.OK
+				)
+
+				await contracts.userFactory.updateBackendProviderForUser(userRouter.address, { from: caller, })
+				await assertExpectations()
+
+				await reverter.promisifyRevert()
+			})
+
+			it("where issuer should be able to update backend to the newest version", async () => {
+				await contracts.userFactory.updateBackendProviderForUser(userRouter.address, { from: users.contractOwner, })
+				assert.equal(await UserRouter.at(userRouter.address).backendProvider.call(), newUserBackendProvider.address)
 			})
 		})
 

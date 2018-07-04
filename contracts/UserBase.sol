@@ -7,6 +7,7 @@ pragma solidity ^0.4.21;
 
 
 import "./UserProxy.sol";
+import "./UserBackendProviderInterface.sol";
 
 
 /// @title Duplicates structure of Owned contract in order to save memory layout for
@@ -20,7 +21,7 @@ contract UserOwned {
 /// @title Used to provide memory layout for UserRouter 
 /// and book an order of properties and an ability to combine with UserOwned contract
 contract UserBase {
-    address public backend;
+    UserBackendProviderInterface public backendProvider;
     address public issuer;
     UserProxy internal userProxy;
     address internal recoveryContract;

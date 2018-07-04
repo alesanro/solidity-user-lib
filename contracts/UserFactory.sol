@@ -17,7 +17,6 @@ import "./UserInterface.sol";
 contract UserFactory is Roles2LibraryAdapter {
 
     uint constant USER_FACTORY_SCOPE = 21000;
-    uint constant USER_FACTORY_INVALID_BACKEND_VERSION = 21001;
 
     event UserCreated(
         address indexed self,
@@ -27,7 +26,7 @@ contract UserFactory is Roles2LibraryAdapter {
         address owner
     );
 
-    address public userBackend;
+    address public userBackendProvider;
     address public oracle;
     address public eventsHistory;
 
@@ -35,25 +34,33 @@ contract UserFactory is Roles2LibraryAdapter {
         eventsHistory = this;
     }
 
-    function getEventsHistory() public view returns (address) {
+    function getEventsHistory() 
+    public 
+    view 
+    returns (address) 
+    {
         return eventsHistory;
     }
 
-    function setupEventsHistory(address _eventsHistory) auth external returns (uint) {
+    function setupEventsHistory(address _eventsHistory) 
+    auth 
+    external 
+    returns (uint) 
+    {
         require(_eventsHistory != 0x0);
 
         eventsHistory = _eventsHistory;
         return OK;
     }
 
-    function setUserBackend(address _newUserBackend)
+    function setUserBackendProvider(address _newUserBackendProvider)
     auth
     external
     returns (uint)
     {
-        require(_newUserBackend != 0x0);
+        require(_newUserBackendProvider != 0x0);
 
-        userBackend = _newUserBackend;
+        userBackendProvider = _newUserBackendProvider;
         return OK;
     }
 
@@ -78,7 +85,7 @@ contract UserFactory is Roles2LibraryAdapter {
     {
         require(_owner != 0x0, "Owner should not be equal to 0x0");
 
-        UserInterface user = UserInterface(address(new UserRouter(address(this), _recoveryContract, userBackend)));
+        UserInterface user = UserInterface(new UserRouter(address(this), _recoveryContract, userBackendProvider));
         user.init(oracle);
         if (_use2FA) {
             assert(OK == user.set2FA(_use2FA));
@@ -96,18 +103,11 @@ contract UserFactory is Roles2LibraryAdapter {
         return OK;
     }
 
-    function updateBackendForUser(UserInterface _user) 
+    function updateBackendProviderForUser(UserInterface _user) 
     auth
     external
     returns (uint) {
-        UserBackend _newUserBackend = UserBackend(userBackend);
-        UserBackend _oldUserBackend = UserBackend(UserBase(address(_user)).backend());
-
-        if (_newUserBackend.version() == _oldUserBackend.version()) {
-            return USER_FACTORY_INVALID_BACKEND_VERSION;
-        }
-
-        return _user.updateBackend(address(_newUserBackend));
+        return _user.updateBackendProvider(userBackendProvider);
     }
 
     function emitUserCreated(

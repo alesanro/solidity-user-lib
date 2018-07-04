@@ -109,14 +109,14 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         return OK;
     }
 
-    function updateBackend(address _newBackend)
+    function updateBackendProvider(address _newBackendProvider)
     onlyCall
     onlyIssuer
     external
     returns (uint) {
-        require(_newBackend != 0x0, "Backend should not be 0x0");
+        require(_newBackendProvider != 0x0, "Backend should not be 0x0");
 
-        backend = _newBackend;
+        backendProvider = UserBackendProviderInterface(_newBackendProvider);
         return OK;
     }
 
@@ -203,7 +203,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         if (!_allowDelegateCall()) {
             return super.claimContractOwnership();
         }
-        
+
         address _oldContractOwner = contractOwner;
         _result = super.claimContractOwnership();
         if (_result) {
@@ -215,6 +215,11 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
 
     function _allowDelegateCall() private view returns (bool) {
         // make sure this is used by delegatecall
-        return address(this) != backend && backend != 0x0; 
+        if (address(backendProvider) == 0x0) {
+            return false;
+        }
+
+        address _backend = backendProvider.getUserBackend();
+        return address(this) != _backend && _backend != 0x0; 
     }
 }
