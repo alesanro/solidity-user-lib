@@ -144,7 +144,10 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     {
         require(newAddress != 0x0, "Recovered user should not be 0x0");
 
+        address _oldContractOwner = contractOwner;
         contractOwner = newAddress;
+        this.replaceOwner(_oldContractOwner, newAddress);
+
         return OK;
     }
 
@@ -160,6 +163,48 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     returns (bytes32) 
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
+    }
+
+    function transferOwnership(address _newOwner) 
+    public 
+    onlyMultiowned(contractOwner)
+    returns (bool _result) 
+    {
+        if (_allowDelegateCall()) {
+            address _oldContractOwner = contractOwner;
+            _result = super.transferOwnership(_newOwner);
+            if (_result) {
+                this.replaceOwner(_oldContractOwner, _newOwner);
+            }
+
+            return _result;
+        } 
+
+        return super.transferOwnership(_newOwner);
+    }
+
+    function changeContractOwnership(address _to)
+    public
+    onlyMultiowned(contractOwner)
+    returns (bool)
+    {
+        return super.changeContractOwnership(_to);
+    }
+
+    function claimContractOwnership()
+    public
+    returns (bool _result)
+    {
+        if (_allowDelegateCall()) {
+            address _oldContractOwner = contractOwner;
+            _result = super.claimContractOwnership();
+            if (_result) {
+                this.replaceOwner(_oldContractOwner, contractOwner);
+            }
+            return _result;
+        }
+
+        return super.claimContractOwnership();
     }
 
     function _allowDelegateCall() private view returns (bool) {

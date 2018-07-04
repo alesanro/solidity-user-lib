@@ -37,14 +37,6 @@ contract("User Workflow", accounts => {
 		mock: null,
 	}
 
-	const Roles = {
-		WORKER: 1,
-		CLIENT: 2,
-		RECRUITER: 3,
-		MODERATOR: 21,
-		USER_FACTORY_ROLE: 101,
-	}
-
 	const assertExpectations = async (expected = 0, callsCount = null) => {
 		assert.equal((await contracts.mock.expectationsLeft()).toString(16), expected.toString(16))
 		const expectationsCount = await contracts.mock.expectationsCount()
@@ -67,12 +59,6 @@ contract("User Workflow", accounts => {
 		contracts.userFactory = await UserFactory.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
 		await contracts.userFactory.setUserBackend(contracts.userBackend.address, { from: users.contractOwner, })
 		await contracts.userFactory.setOracleAddress(users.oracle, { from: users.contractOwner, })
-		await contracts.userFactory.addAllowedRoles([ Roles.CLIENT, Roles.RECRUITER, Roles.WORKER, ], { from: users.contractOwner, })
-		{
-			const sig = contracts.rolesLibrary.contract.addUserRole.getData(0,[0,]).slice(0, 10)
-			await contracts.rolesLibrary.addRoleCapability(Roles.USER_FACTORY_ROLE, contracts.rolesLibrary.address, sig, { from: users.contractOwner, })
-		}
-		await contracts.rolesLibrary.addUserRole(contracts.userFactory.address, Roles.USER_FACTORY_ROLE, { from: users.contractOwner, })
 
 		contracts.mock = await Mock.new()
 
@@ -153,7 +139,6 @@ contract("User Workflow", accounts => {
 
 	context("creation", () => {
 		const user = users.user1
-		const roles = [Roles.WORKER,]
 
 		let userRouterAddress
 		let userProxyAddress
@@ -163,7 +148,7 @@ contract("User Workflow", accounts => {
 		})
 
 		it("should be able to create a new user", async () => {
-			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, users.recovery, roles, { from: user, })
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, users.recovery, false, { from: user, })
 			{
 				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
 				assert.isDefined(event)
@@ -171,7 +156,6 @@ contract("User Workflow", accounts => {
 				assert.isDefined(event.args.proxy)
 				assert.equal(event.args.recoveryContract, users.recovery)
 				assert.equal(event.args.owner, user)
-				assert.equal(event.args.roles.toString(), roles.toString())
 
 				userRouterAddress = event.args.user
 				userProxyAddress = event.args.proxy
@@ -215,7 +199,7 @@ contract("User Workflow", accounts => {
 		})
 
 		it("user should be able to forward a call by a user", async () => {
-			const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, roles)
+			const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, false)
 			await contracts.mock.expect(
 				userProxyAddress,
 				0,
@@ -288,7 +272,6 @@ contract("User Workflow", accounts => {
 
 	context("update", () => {
 		const user = users.user1
-		const roles = [Roles.WORKER,]
 
 		let userRouter
 		let userProxy
@@ -296,7 +279,7 @@ contract("User Workflow", accounts => {
 		let snapshotId
 
 		before(async () => {
-			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, users.recovery, roles, { from: user, })
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, users.recovery, false, { from: user, })
 			{
 				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
 				userRouter = UserInterface.at(event.args.user)
@@ -354,7 +337,7 @@ contract("User Workflow", accounts => {
 			})
 
 			it("and forward should NOT go through old proxy", async () => {
-				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, roles)
+				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, false)
 				await contracts.mock.expect(
 					userProxy.address,
 					0,
@@ -367,7 +350,7 @@ contract("User Workflow", accounts => {
 			})
 
 			it("and forward should go through a new proxy", async () => {
-				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, roles)
+				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, false)
 				await contracts.mock.expect(
 					newUserProxy.address,
 					0,
@@ -404,7 +387,7 @@ contract("User Workflow", accounts => {
 			})
 
 			it("and forward function should NOT have 'BumpedUserBackendEvent' event emitted", async () => {
-				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, roles)
+				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, false)
 				await contracts.mock.expect(
 					userProxy.address,
 					0,
@@ -462,7 +445,7 @@ contract("User Workflow", accounts => {
 			})
 
 			it("and forward function should have 'BumpedUserBackendEvent' event emitted", async () => {
-				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, roles)
+				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, false)
 				await contracts.mock.expect(
 					userProxy.address,
 					0,
@@ -555,7 +538,7 @@ contract("User Workflow", accounts => {
 				let data
 
 				before(async () => {
-					data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, roles)
+					data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, false)
 				})
 
 				after(async () => {
@@ -567,7 +550,7 @@ contract("User Workflow", accounts => {
 				})
 
 				it("and should allow to call forward with 2FA = 'false' immediately", async () => {
-					const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, roles)
+					const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, users.recovery, false)
 					await contracts.mock.expect(
 						userProxy.address,
 						0,
