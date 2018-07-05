@@ -1,5 +1,5 @@
 {
-  "name": "shared-user-lib",
+  "name": "solidity-user-lib",
   "version": "0.0.1",
   "description": "User contracts Shared Library",
   "main": "truffle.js",
