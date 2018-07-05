@@ -1,1 +1,1 @@
-# solidity-user-lib
+# solidity-user-lib [![Build Status](https://travis-ci.org/ChronoBank/solidity-user-lib.svg?branch=develop)](https://travis-ci.org/ChronoBank/solidity-user-lib) [![Coverage Status](https://coveralls.io/repos/github/ChronoBank/solidity-user-lib/badge.svg?branch=develop)](https://coveralls.io/github/ChronoBank/solidity-user-lib?branch=develop)
