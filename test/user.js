@@ -95,11 +95,48 @@ contract("User Workflow", accounts => {
 					contracts.userBackendProvider.address
 				)
 			})
+
+			it("should have pre-setup events history", async () => {
+				assert.equal(
+					await contracts.userFactory.getEventsHistory(),
+					contracts.userFactory.address
+				)
+			})
+
+			it("should THROW and NOT allow to pass 0x0 for events history", async () => {
+				await contracts.userFactory.setupEventsHistory(utils.zeroAddress, { from: users.contractOwner, }).then(assert.fail, () => true)
+			})
+
+			it("should check auth when setup events history", async () => {
+				const caller = users.user3
+				const newEventsHistory = "0x0000ffffffffffffffffffffffffffffffff0000"
+
+				await contracts.userFactory.setRoles2Library(contracts.mock.address)
+				await contracts.mock.expect(
+					contracts.userFactory.address,
+					0,
+					contracts.rolesLibrary.contract.canCall.getData(caller, contracts.userFactory.address, contracts.userFactory.contract.setupEventsHistory.getData(0x0).slice(0, 10)),
+					await contracts.mock.convertUIntToBytes32(1)
+				)
+
+				assert.equal(
+					(await contracts.userFactory.setupEventsHistory.call(newEventsHistory, { from: caller, })).toNumber(),
+					ErrorScope.OK
+				)
+
+				await contracts.userFactory.setupEventsHistory(newEventsHistory, { from: caller, })
+				await assertExpectations()
+
+				assert.equal(
+					await contracts.userFactory.getEventsHistory.call(),
+					newEventsHistory
+				)
+			})
 		})
 
 		describe("user backend", () => {
 			it("should THROW and NOT allow to initialize UserBackend by direct call", async () => {
-				await contracts.userBackend.init(users.oracle, { from: users.contractOwner, }).then(assert.fail, () => true)
+				await contracts.userBackend.init(users.oracle, false, { from: users.contractOwner, }).then(assert.fail, () => true)
 			})
 
 			it("should have 0x0 user proxy property", async () => {
@@ -230,6 +267,49 @@ contract("User Workflow", accounts => {
 			await reverter.promisifyRevert()
 		})
 
+		it("should THROW and NOT allow to set 2FA for a user without proper init (calling 'init' function)", async () => {
+			const stubUser = await UserRouter.new(user, users.recovery, contracts.userBackendProvider.address, { from: users.contractOwner, })
+			await UserInterface.at(stubUser.address).set2FA(true, { from: user, }).then(assert.fail, () => true)
+		})
+
+		it("should NOT allow to init a created user by a non-issuer with UNAUTHORIZED code", async () => {
+			const issuer = users.user3
+			const nonIssuer = users.user2
+			const stubUser = await UserRouter.new(user, users.recovery, contracts.userBackendProvider.address, { from: issuer, })
+			assert.equal(
+				(await UserInterface.at(stubUser.address).init.call(users.oracle, true, { from: nonIssuer, })).toNumber(),
+				ErrorScope.UNAUTHORIZED
+			)
+
+			await UserInterface.at(stubUser.address).init(users.oracle, true, { from: nonIssuer, })
+			await UserInterface.at(stubUser.address).getOracle().then(assert.fail, () => true)
+			assert.isFalse(await UserInterface.at(stubUser.address).use2FA.call())
+		})
+
+		it("should allow to create a user with manual init by issuer", async () => {
+			const issuer = users.user3
+			const stubUser = await UserRouter.new(user, users.recovery, contracts.userBackendProvider.address, { from: issuer, })
+			assert.equal(
+				(await UserInterface.at(stubUser.address).init.call(users.oracle, true, { from: issuer, })).toNumber(),
+				ErrorScope.OK
+			)
+
+			await UserInterface.at(stubUser.address).init(users.oracle, true, { from: issuer, })
+			assert.equal(
+				await UserInterface.at(stubUser.address).getOracle.call(),
+				users.oracle
+			)
+			assert.isTrue(await UserInterface.at(stubUser.address).use2FA.call())
+		})
+
+		it("should THROW and NOT allow to create a user without an owner", async () => {
+			await contracts.userFactory.createUserWithProxyAndRecovery(utils.zeroAddress, users.recovery, false, { from: user, }).then(assert.fail, () => true)
+		})
+
+		it("should THROW and NOT allow to create a user without backend provider", async () => {
+			await UserRouter.new(user, users.recovery, utils.zeroAddress, { from: users.contractOwner, }).then(assert.fail, () => true)
+		})
+
 		it("should be able to create a new user", async () => {
 			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, users.recovery, false, { from: user, })
 			{
@@ -259,8 +339,11 @@ contract("User Workflow", accounts => {
 			)
 		})
 
-		it("should THROW to initialize newly created user", async () => {
-			await UserInterface.at(userRouterAddress).init(users.oracle, { from: user, }).then(assert.fail, () => true)
+		it("should NOT allow to initialize newly created user from UserFactory with UNAUTHORIZED code", async () => {
+			assert.equal(
+				(await UserInterface.at(userRouterAddress).init.call(users.oracle, false, { from: user, })).toNumber(),
+				ErrorScope.UNAUTHORIZED
+			)
 		})
 
 		it("user should have issuer and backend", async () => {
@@ -302,6 +385,10 @@ contract("User Workflow", accounts => {
 			)
 		})
 
+		it("should THROW when pass 0x0 for recovery contract", async () => {
+			await UserInterface.at(userRouterAddress).setRecoveryContract(utils.zeroAddress, { from: user, }).then(assert.fail, () => true)
+		})
+
 		it("user should be able to update recovery contract with OK code", async () => {
 			const newRecovery = users.user3
 			assert.equal(
@@ -327,6 +414,10 @@ contract("User Workflow", accounts => {
 			)
 		})
 
+		it("should THROW when pass 0x0 for a new user during recovery", async () => {
+			await UserInterface.at(userRouterAddress).recoverUser(utils.zeroAddress, { from: newRecovery, }).then(assert.fail, () => true)
+		})
+
 		it("user should be able to recover", async () => {
 			await reverter.promisifySnapshot()
 			const snapshotId = reverter.snapshotId
@@ -346,6 +437,10 @@ contract("User Workflow", accounts => {
 				(await UserInterface.at(userRouterAddress).setOracle.call(newOracle, { from: users.user3, })).toNumber(),
 				ErrorScope.UNAUTHORIZED
 			)
+		})
+
+		it("should THROW when pass 0x0 oracle", async () => {
+			await UserInterface.at(userRouterAddress).setOracle(utils.zeroAddress, { from: user, }).then(assert.fail, () => true)
 		})
 
 		it("user should be able to update an oracle with OK code", async () => {
@@ -373,6 +468,11 @@ contract("User Workflow", accounts => {
 			assert.isFalse(await UserInterface.at(userRouterAddress).isOwner(newUser))
 		})
 
+		it("should NOT allow to transfer a contract ownership to another user by non-contract owner", async () => {
+			assert.notEqual(await Owned.at(userRouterAddress).contractOwner.call(), newUser)
+			assert.isFalse(await Owned.at(userRouterAddress).transferOwnership.call(newUser, { from: newUser, }))
+		})
+
 		it("should be able to transfer a contract ownership to another user", async () => {
 			assert.notEqual(await Owned.at(userRouterAddress).contractOwner.call(), newUser)
 
@@ -396,6 +496,23 @@ contract("User Workflow", accounts => {
 		it("multisig owner should change with ownership transfer", async () => {
 			assert.isTrue(await UserInterface.at(userRouterAddress).isOwner(user), "current contract owner should be in multisig")
 			assert.isFalse(await UserInterface.at(userRouterAddress).isOwner(newUser), "previous contract owner should not be in multisig")
+		})
+
+		it("should NOT allow to change&claim a contract ownership to another user by non-contract owner", async () => {
+			assert.notEqual(await Owned.at(userRouterAddress).contractOwner.call(), newUser)
+			assert.isFalse(await Owned.at(userRouterAddress).changeContractOwnership.call(newUser, { from: newUser, }))
+
+			await Owned.at(userRouterAddress).changeContractOwnership(newUser, { from: newUser, })
+			assert.isFalse(await Owned.at(userRouterAddress).claimContractOwnership.call({ from: newUser, }))
+		})
+
+		it("should allow to create a user with 'use2FA = true'", async () => {
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, users.recovery, true, { from: user, })
+			{
+				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
+				assert.isDefined(event)
+				assert.isTrue(await UserInterface.at(event.args.user).use2FA.call())
+			}
 		})
 	})
 
@@ -492,6 +609,10 @@ contract("User Workflow", accounts => {
 			})
 		})
 
+		describe("oracle", () => {
+
+		})
+
 		describe("backend", () => {
 			let newUserBackend
 
@@ -523,6 +644,10 @@ contract("User Workflow", accounts => {
 				}
 			})
 
+			it("should THROW when pass 0x0 user backend", async () => {
+				await contracts.userBackendProvider.setUserBackend(utils.zeroAddress, { from: users.contractOwner, }).then(assert.fail, () => true)
+			})
+
 			it("should update user backend in user backend provider", async () => {
 				await contracts.userBackendProvider.setUserBackend(newUserBackend.address, { from: users.contractOwner, })
 				assert.equal(
@@ -547,6 +672,7 @@ contract("User Workflow", accounts => {
 				}
 			})
 		})
+
 
 		describe("backend provider", () => {
 			let newUserBackendProvider
@@ -596,6 +722,10 @@ contract("User Workflow", accounts => {
 				await assertExpectations()
 
 				await reverter.promisifyRevert()
+			})
+
+			it("and should THROW when pass 0x0 for user backend provider", async () => {
+				await contracts.userFactory.setUserBackendProvider(utils.zeroAddress, { from: users.contractOwner, }).then(assert.fail, () => true)
 			})
 
 			it("and base backend provider should be updated in user factory first", async () => {
@@ -718,6 +848,13 @@ contract("User Workflow", accounts => {
 
 				it("by default should be 'false'", async () => {
 					assert.isFalse(await userRouter.use2FA.call())
+				})
+
+				it("should do nothing when pass 'false' again", async () => {
+					assert.equal(
+						(await userRouter.set2FA.call(false, { from: user, })).toNumber(),
+						ErrorScope.OK
+					)
 				})
 
 				it("and should allow to call forward with 2FA = 'false' immediately", async () => {

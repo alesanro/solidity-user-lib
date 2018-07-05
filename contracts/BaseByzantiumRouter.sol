@@ -9,7 +9,10 @@ pragma solidity ^0.4.11;
 /// @title Routing contract that is able to provide a way for delegating invocations with dynamic destination address.
 contract BaseByzantiumRouter {
 
-    function() payable external {
+    function() 
+    payable 
+    external 
+    {
         address _implementation = implementation();
 
         assembly {

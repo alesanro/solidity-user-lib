@@ -27,7 +27,8 @@ contract UserRouter is BaseByzantiumRouter, UserOwned, UserBase {
     function implementation()
     internal
     view 
-    returns (address) {
+    returns (address) 
+    {
         return backendProvider.getUserBackend();
     }
 }

@@ -10,7 +10,7 @@ import "./MultiSig.sol";
 
 
 contract UserInterface is MultiSig {
-    function init(address _oracle) external returns (uint);
+    function init(address _oracle, bool _enable2FA) external returns (uint);
     function getUserProxy() external view returns (address);
     function setUserProxy(address _userProxy) external returns (uint);
     function use2FA() external view returns (bool);

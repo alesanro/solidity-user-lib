@@ -55,13 +55,14 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         _;
     }
 
-    function init(address _oracle) 
+    function init(address _oracle, bool _enable2FA)
     onlyCall
-    onlyContractOwner
+    onlyIssuer
     external
     returns (uint)
     {
         _init(contractOwner, _oracle);
+        this.set2FA(_enable2FA);
         return OK;
     }
 
@@ -103,8 +104,6 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     external
     returns (uint)
     {
-        require(_oracle != 0x0, "Oracle address should not be 0x0");
-
         _setOracle(_oracle);
         return OK;
     }
@@ -113,7 +112,8 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     onlyCall
     onlyIssuer
     external
-    returns (uint) {
+    returns (uint) 
+    {
         require(_newBackendProvider != 0x0, "Backend should not be 0x0");
 
         backendProvider = UserBackendProviderInterface(_newBackendProvider);

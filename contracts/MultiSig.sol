@@ -119,8 +119,8 @@ contract MultiSig {
     /// @param _owners List of initial owners.
     /// @param _required Number of required confirmations.
     function _initMultiSig(address[] _owners, uint _required)
-    internal
     validRequirement(_owners.length, _required)
+    internal
     {
         require(required == 0, "[MultiSig]: 'required' should not be initialized");
         owners.length = 0;
@@ -138,11 +138,11 @@ contract MultiSig {
     /// @dev Allows to add a new owner. Transaction has to be sent by wallet.
     /// @param owner Address of new owner.
     function addOwner(address owner)
-    public
     onlySelf
     ownerDoesNotExist(owner)
     notNull(owner)
     validRequirement(owners.length + 1, required)
+    public
     {
         isOwner[owner] = true;
         owners.push(owner);
@@ -152,9 +152,9 @@ contract MultiSig {
     /// @dev Allows to remove an owner. Transaction has to be sent by wallet.
     /// @param owner Address of owner.
     function removeOwner(address owner)
-    public
     onlySelf
     ownerExists(owner)
+    public
     {
         isOwner[owner] = false;
         for (uint i = 0; i < owners.length - 1; ++i) {
@@ -175,10 +175,10 @@ contract MultiSig {
     /// @param owner Address of owner to be replaced.
     /// @param owner Address of new owner.
     function replaceOwner(address owner, address newOwner)
-    public
     onlySelf
     ownerExists(owner)
     ownerDoesNotExist(newOwner)
+    public
     {
         for (uint i = 0; i < owners.length; ++i) {
             if (owners[i] == owner) {
@@ -196,9 +196,9 @@ contract MultiSig {
     /// @dev Allows to change the number of required confirmations. Transaction has to be sent by wallet.
     /// @param _required Number of required confirmations.
     function changeRequirement(uint _required)
-    public
     onlySelf
     validRequirement(owners.length, _required)
+    public
     {
         required = _required;
         emit RequirementChange(_required);
@@ -220,10 +220,10 @@ contract MultiSig {
     /// @dev Allows an owner to confirm a transaction.
     /// @param transactionId Transaction ID.
     function confirmTransaction(uint transactionId)
-    public
     ownerExists(msg.sender)
     transactionExists(transactionId)
     notConfirmed(transactionId, msg.sender)
+    public
     {
         confirmations[transactionId][msg.sender] = true;
         emit Confirmation(msg.sender, transactionId);
@@ -233,10 +233,10 @@ contract MultiSig {
     /// @dev Allows an owner to revoke a confirmation for a transaction.
     /// @param transactionId Transaction ID.
     function revokeConfirmation(uint transactionId)
-    public
     ownerExists(msg.sender)
     confirmed(transactionId, msg.sender)
     notExecuted(transactionId)
+    public
     {
         delete confirmations[transactionId][msg.sender];
         emit Revocation(msg.sender, transactionId);
@@ -245,8 +245,8 @@ contract MultiSig {
     /// @dev Allows anyone to execute a confirmed transaction.
     /// @param transactionId Transaction ID.
     function executeTransaction(uint transactionId)
-    public
     notExecuted(transactionId)
+    public
     {
         if (isConfirmed(transactionId)) {
             Transaction storage _tx = transactions[transactionId];
@@ -291,8 +291,8 @@ contract MultiSig {
     /// @param data Transaction data payload.
     /// @return Returns transaction ID.
     function addTransaction(address destination, uint value, bytes data)
-    internal
     notNull(destination)
+    internal
     returns (uint transactionId)
     {
         transactionId = transactionCount;

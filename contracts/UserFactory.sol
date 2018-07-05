@@ -9,8 +9,6 @@ pragma solidity ^0.4.21;
 import "solidity-roles-lib/contracts/Roles2LibraryAdapter.sol";
 import "solidity-shared-lib/contracts/Owned.sol";
 import "./UserRouter.sol";
-import "./UserProxy.sol";
-import "./UserBackend.sol";
 import "./UserInterface.sol";
 
 
@@ -85,13 +83,8 @@ contract UserFactory is Roles2LibraryAdapter {
     {
         require(_owner != 0x0, "Owner should not be equal to 0x0");
 
-        UserInterface user = UserInterface(new UserRouter(address(this), _recoveryContract, userBackendProvider));
-        user.init(oracle);
-        if (_use2FA) {
-            assert(OK == user.set2FA(_use2FA));
-        }
-
-        assert(Owned(user).transferOwnership(_owner));
+        UserInterface user = UserInterface(new UserRouter(_owner, _recoveryContract, userBackendProvider));
+        user.init(oracle, _use2FA);
 
         address proxy = user.getUserProxy();
         UserFactory(getEventsHistory()).emitUserCreated(
@@ -106,7 +99,8 @@ contract UserFactory is Roles2LibraryAdapter {
     function updateBackendProviderForUser(UserInterface _user) 
     auth
     external
-    returns (uint) {
+    returns (uint) 
+    {
         return _user.updateBackendProvider(userBackendProvider);
     }
 

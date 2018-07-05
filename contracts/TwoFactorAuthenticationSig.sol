@@ -32,7 +32,8 @@ contract TwoFactorAuthenticationSig is MultiSig {
     function getOracle()
     public
     view
-    returns (address) {
+    returns (address) 
+    {
         return owners[1];
     }
 }
