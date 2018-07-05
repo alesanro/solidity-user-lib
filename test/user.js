@@ -1,3 +1,5 @@
+"use strict"
+
 const UserBackend = artifacts.require("UserBackend")
 const UserBackendProvider = artifacts.require("UserBackendProvider")
 const BumpedUserBackend = artifacts.require("BumpedUserBackend")
@@ -40,9 +42,16 @@ contract("User Workflow", accounts => {
 	}
 
 	const assertExpectations = async (expected = 0, callsCount = null) => {
-		assert.equal((await contracts.mock.expectationsLeft()).toString(16), expected.toString(16))
+		assert.equal(
+			(await contracts.mock.expectationsLeft()).toString(16),
+			expected.toString(16)
+		)
+
 		const expectationsCount = await contracts.mock.expectationsCount()
-		assert.equal((await contracts.mock.callsCount()).toString(16), callsCount === null ? expectationsCount.toString(16) : callsCount.toString(16))
+		assert.equal(
+			(await contracts.mock.callsCount()).toString(16),
+			callsCount === null ? expectationsCount.toString(16) : callsCount.toString(16)
+		)
 	}
 
 	before("setup", async () => {
@@ -77,11 +86,12 @@ contract("User Workflow", accounts => {
 
 	context("initial state of", () => {
 
-		after(async () => {
-			await reverter.promisifyRevert()
-		})
-
 		describe("user factory", () => {
+
+			afterEach(async () => {
+				await reverter.promisifyRevert()
+			})
+
 			it("should have pre-setup oracle", async () => {
 				assert.equal(
 					await contracts.userFactory.oracle(),
@@ -132,9 +142,44 @@ contract("User Workflow", accounts => {
 					newEventsHistory
 				)
 			})
+
+			it("should THROW and NOT allow to pass 0x0 for oracle address", async () => {
+				await contracts.userFactory.setOracleAddress(utils.zeroAddress, { from: users.contractOwner, }).then(assert.fail, () => true)
+			})
+
+			it("should check auth when set oracle address", async () => {
+				const caller = users.user3
+				const newOracleAddress = "0x0000ffffffffffffffffffffffffffffffff0000"
+
+				await contracts.userFactory.setRoles2Library(contracts.mock.address)
+				await contracts.mock.expect(
+					contracts.userFactory.address,
+					0,
+					contracts.rolesLibrary.contract.canCall.getData(caller, contracts.userFactory.address, contracts.userFactory.contract.setOracleAddress.getData(0x0).slice(0, 10)),
+					await contracts.mock.convertUIntToBytes32(1)
+				)
+
+				assert.equal(
+					(await contracts.userFactory.setOracleAddress.call(newOracleAddress, { from: caller, })).toNumber(),
+					ErrorScope.OK
+				)
+
+				await contracts.userFactory.setOracleAddress(newOracleAddress, { from: caller, })
+				await assertExpectations()
+
+				assert.equal(
+					await contracts.userFactory.oracle.call(),
+					newOracleAddress
+				)
+			})
 		})
 
 		describe("user backend", () => {
+
+			after(async () => {
+				await reverter.promisifyRevert()
+			})
+
 			it("should THROW and NOT allow to initialize UserBackend by direct call", async () => {
 				await contracts.userBackend.init(users.oracle, false, { from: users.contractOwner, }).then(assert.fail, () => true)
 			})
@@ -308,6 +353,12 @@ contract("User Workflow", accounts => {
 
 		it("should THROW and NOT allow to create a user without backend provider", async () => {
 			await UserRouter.new(user, users.recovery, utils.zeroAddress, { from: users.contractOwner, }).then(assert.fail, () => true)
+		})
+
+		it("should THROW and NOT allow to pass 0x0 to update a user backend provider", async () => {
+			const issuer = users.contractOwner
+			const stubUser = await UserRouter.new(user, users.recovery, contracts.userBackendProvider.address, { from: issuer, })
+			await UserInterface.at(stubUser.address).updateBackendProvider(utils.zeroAddress, { from: issuer, }).then(assert.fail, () => true)
 		})
 
 		it("should be able to create a new user", async () => {

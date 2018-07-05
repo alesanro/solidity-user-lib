@@ -67,7 +67,7 @@ contract UserFactory is Roles2LibraryAdapter {
     external
     returns (uint)
     {
-        require(_oracle != 0x0);
+        require(_oracle != 0x0, "Oracle should not be equal to 0x0");
 
         oracle = _oracle;
         return OK;
