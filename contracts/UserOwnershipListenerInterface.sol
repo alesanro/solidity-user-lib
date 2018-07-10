@@ -3,7 +3,7 @@
 * Licensed under the AGPL Version 3 license.
 */
 
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.21;
 
 
 /// @title TODO:

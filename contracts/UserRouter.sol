@@ -12,7 +12,7 @@ import "./UserBase.sol";
 
 contract UserRouter is BaseByzantiumRouter, UserOwned, UserBase {
 
-    constructor(address _owner, address _recoveryContract, address _backendProvider) 
+    function UserRouter(address _owner, address _recoveryContract, address _backendProvider) 
     public
     {
         require(_backendProvider != 0x0);

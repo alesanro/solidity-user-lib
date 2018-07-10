@@ -35,7 +35,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     }
 
     modifier only2FADisabled {
-        require(!use2FA, "2FA should be disabled");
+        require(!use2FA);
         _;
     }
 
@@ -52,7 +52,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     }
 
     modifier onlyCall {
-        require(_allowDelegateCall(), "Only delegatecall is allowed");
+        require(_allowDelegateCall());
         _;
     }
 
@@ -73,7 +73,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     external
     returns (uint) 
     {
-        require(getOracle() != 0x0, "Oracle must be set before 2FA activation");
+        require(getOracle() != 0x0);
 
         if (use2FA != _enabled) {
             use2FA = _enabled;
@@ -115,7 +115,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     external
     returns (uint) 
     {
-        require(_newBackendProvider != 0x0, "Backend should not be 0x0");
+        require(_newBackendProvider != 0x0);
 
         backendProvider = UserBackendProviderInterface(_newBackendProvider);
         return OK;
@@ -127,7 +127,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     public 
     returns (uint) 
     {
-        require(_recoveryContract != 0x0, "Recovery contract address should not be 0x0");
+        require(_recoveryContract != 0x0);
 
         recoveryContract = _recoveryContract;
         return OK;
@@ -147,7 +147,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     public
     returns (uint) 
     {
-        require(newAddress != 0x0, "Recovered user should not be 0x0");
+        require(newAddress != 0x0);
 
         address _oldContractOwner = contractOwner;
         contractOwner = newAddress;

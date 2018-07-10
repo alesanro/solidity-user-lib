@@ -30,7 +30,7 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
     address public userBackendProvider;
     address public oracle;
 
-    constructor(address _roles2Library) Roles2LibraryAdapter(_roles2Library) public {
+    function UserFactory(address _roles2Library) Roles2LibraryAdapter(_roles2Library) public {
         _setEventsHistory(this);
     }
 
@@ -61,7 +61,7 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
     external
     returns (uint)
     {
-        require(_oracle != 0x0, "Oracle should not be equal to 0x0");
+        require(_oracle != 0x0);
 
         oracle = _oracle;
         return OK;
@@ -75,7 +75,7 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
     public
     returns (uint) 
     {
-        require(_owner != 0x0, "Owner should not be equal to 0x0");
+        require(_owner != 0x0);
 
         UserInterface user = UserInterface(new UserRouter(_owner, _recoveryContract, userBackendProvider));
         user.init(oracle, _use2FA);
