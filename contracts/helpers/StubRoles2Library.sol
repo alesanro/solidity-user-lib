@@ -7,10 +7,4 @@ pragma solidity ^0.4.21;
 
 
 import "solidity-roles-lib/contracts/Roles2Library.sol";
-
-
-contract StubRoles2Library is Roles2Library {
-    
-    constructor(Storage _store, bytes32 _crate) Roles2Library(_store, _crate) public {
-    }
-}
+import "solidity-storage-lib/contracts/StorageManager.sol";

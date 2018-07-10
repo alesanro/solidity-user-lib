@@ -6,13 +6,14 @@
 pragma solidity ^0.4.21;
 
 
-import "solidity-roles-lib/contracts/Roles2LibraryAdapter.sol";
 import "solidity-shared-lib/contracts/Owned.sol";
+import "solidity-eventshistory-lib/contracts/MultiEventsHistoryAdapter.sol";
+import "solidity-roles-lib/contracts/Roles2LibraryAdapter.sol";
 import "./UserRouter.sol";
 import "./UserInterface.sol";
 
 
-contract UserFactory is Roles2LibraryAdapter {
+contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
 
     uint constant USER_FACTORY_SCOPE = 21000;
 
@@ -26,18 +27,9 @@ contract UserFactory is Roles2LibraryAdapter {
 
     address public userBackendProvider;
     address public oracle;
-    address public eventsHistory;
 
     constructor(address _roles2Library) Roles2LibraryAdapter(_roles2Library) public {
-        eventsHistory = this;
-    }
-
-    function getEventsHistory() 
-    public 
-    view 
-    returns (address) 
-    {
-        return eventsHistory;
+        _setEventsHistory(this);
     }
 
     function setupEventsHistory(address _eventsHistory) 
@@ -46,8 +38,8 @@ contract UserFactory is Roles2LibraryAdapter {
     returns (uint) 
     {
         require(_eventsHistory != 0x0);
-
-        eventsHistory = _eventsHistory;
+        
+        _setEventsHistory(_eventsHistory);
         return OK;
     }
 

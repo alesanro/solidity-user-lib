@@ -2,7 +2,7 @@
 
 const Recovery = artifacts.require("Recovery")
 const Roles2LibraryInterface = artifacts.require("Roles2LibraryInterface")
-const Roles2Library = artifacts.require("StubRoles2Library")
+const Roles2Library = artifacts.require("Roles2Library")
 const Storage = artifacts.require("Storage")
 const StorageManager = artifacts.require("StorageManager")
 const Mock = artifacts.require("Mock")
@@ -52,6 +52,7 @@ contract('Recovery', function(accounts) {
 
 		contracts.storage = await Storage.new({ from: users.contractOwner, })
 		contracts.storageManager = await StorageManager.new({ from: users.contractOwner, })
+		await contracts.storageManager.setupEventsHistory(contracts.storageManager.address, { from: users.contractOwner, })
 		await contracts.storage.setManager(contracts.storageManager.address, { from: users.contractOwner, })
 
 		contracts.rolesLibrary = await Roles2Library.new(contracts.storage.address, "RolesLib", { from: users.contractOwner, })
