@@ -68,7 +68,7 @@ contract ThirdPartyMultiSig is TwoFactorAuthenticationSig {
     function _revokeThirdPartyOwnerImpl(address _owner)
     internal
     {
-        require(isThirdPartyOwner(_owner), "THIRD_PARTY_MULTISIG_SHOULD_NOT_BE_OWNER_OR_ORACLE_ADDRESS");
+        require(isThirdPartyOwner(_owner));
         this.removeOwner(_owner);
     }
 
@@ -81,7 +81,7 @@ contract ThirdPartyMultiSig is TwoFactorAuthenticationSig {
             ((confirmations[transactionId][getOwner()] && sender != getOracle()) ||
             (!confirmations[transactionId][getOracle()] && sender == getOwner()))
         ) {
-            revert("THIRD_PARTY_MULTISIG_INVALID_CONFIRMATION");
+            revert();
         }
     }
 }

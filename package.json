@@ -1,6 +1,6 @@
 {
   "name": "solidity-user-lib",
-  "version": "0.2.1",
+  "version": "0.3.0-alpha.2",
   "description": "User contracts Shared Library",
   "main": "truffle.js",
   "scripts": {
@@ -41,14 +41,14 @@
     "solidity"
   ],
   "dependencies": {
-    "solidity-shared-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-shared-lib.git#v0.2.3",
-    "solidity-eventshistory-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-eventshistory-lib.git#v0.1.2",
-    "solidity-storage-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-storage-lib.git#v0.2.1",
-    "solidity-roles-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-roles-lib.git#v0.1.1"
+    "solidity-shared-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-shared-lib.git#backport/package-0.2.3-solc-0.4.21",
+    "solidity-eventshistory-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-eventshistory-lib.git#backport/package-0.1.2-solc-0.4.21",
+    "solidity-storage-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-storage-lib.git#backport/package-0.2.2-solc-0.4.21",
+    "solidity-roles-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-roles-lib.git#backport/package-0.1.1-solc-0.4.21"
   },
   "devDependencies": {
-    "ganache-cli": "6.1.4",
-    "truffle": "4.1.13",
+    "ganache-cli": "6.1.0",
+    "truffle": "4.1.5",
     "abi-decoder": "^1.0.9",
     "babel-polyfill": "^6.26.0",
     "babel-preset-es2015": "^6.24.1",

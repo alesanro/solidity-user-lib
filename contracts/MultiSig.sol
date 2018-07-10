@@ -42,42 +42,42 @@ contract MultiSig {
 
     modifier onlySelf() {
         if (msg.sender != address(this)) {
-            revert("[MultiSig]: Only 'this' allowed to call");
+            revert();
         }
         _;
     }
 
     modifier ownerDoesNotExist(address owner) {
         if (isOwner[owner]) {
-            revert("[MultiSig]: Owner should not exist");
+            revert();
         }
         _;
     }
 
     modifier ownerExists(address owner) {
         if (!isOwner[owner]) {
-            revert("[MultiSig]: owner should not exist");
+            revert();
         }
         _;
     }
 
     modifier transactionExists(uint transactionId) {
         if (transactions[transactionId].status == STATUS_NOT_INITIALIZED) {
-            revert("[MultiSig]: tx should exist");
+            revert();
         }
         _;
     }
 
     modifier confirmed(uint transactionId, address owner) {
         if (!confirmations[transactionId][owner]) {
-            revert("[MultiSig]: tx should be confirmed");
+            revert();
         }
         _;
     }
 
     modifier notConfirmed(uint transactionId, address owner) {
         if (confirmations[transactionId][owner]) {
-            revert("[MultiSig]: tx should not be confirmed");
+            revert();
         }
         _;
     }
@@ -85,14 +85,14 @@ contract MultiSig {
     modifier notExecuted(uint transactionId) {
         uint8 _status = transactions[transactionId].status;
         if ((_status & (STATUS_EXECUTED | STATUS_CANCELLED)) != 0) {
-            revert("[MultiSig]: tx should not be executed");
+            revert();
         }
         _;
     }
 
     modifier notNull(address _address) {
         if (_address == 0x0) {
-            revert("[MultiSig]: address should not be 0x0");
+            revert();
         }
         _;
     }
@@ -103,7 +103,7 @@ contract MultiSig {
             || _required == 0
             || ownerCount == 0
         ) {
-            revert("[MultiSig]: valid multisig requirement is not met");
+            revert();
         }
         _;
     }
@@ -122,7 +122,7 @@ contract MultiSig {
      * Public functions
      */
     /// @dev Contract constructor sets initial owners and required number of confirmations.
-    constructor() public {
+    function MultiSig() public {
 
     }
 
@@ -132,12 +132,12 @@ contract MultiSig {
     validRequirement(_owners.length, _required)
     internal
     {
-        require(required == 0, "[MultiSig]: 'required' should not be initialized");
+        require(required == 0);
         owners.length = 0;
 
         for (uint i = 0; i < _owners.length; ++i) {
             if (isOwner[_owners[i]] || _owners[i] == 0) {
-                revert("[MultiSig]: owner should not be skipped");
+                revert();
             }
             isOwner[_owners[i]] = true;
         }
@@ -253,8 +253,8 @@ contract MultiSig {
     {
         bytes32 _message = getMessageForTransaction(transactionId, pass);
         address _owner = getSigner(_message, v, r, s);
-        require(isOwner[_owner], "Owner does not exist");
-        require(confirmations[transactionId][_owner], "Transaction is already confirmed by this owner");
+        require(isOwner[_owner]);
+        require(confirmations[transactionId][_owner]);
 
         emit Confirmation(_owner, transactionId);
         executeTransaction(transactionId);
@@ -435,7 +435,7 @@ contract MultiSig {
     returns (address)
     {
         return ecrecover(
-            keccak256(abi.encodePacked(SIGNATURE_PREFIX, _message)),
+            keccak256(SIGNATURE_PREFIX, _message),
             v, 
             r, 
             s
@@ -447,6 +447,6 @@ contract MultiSig {
     view
     returns (bytes32)
     {
-        return keccak256(abi.encodePacked(pass, transactionId, address(this)));
+        return keccak256(pass, transactionId, address(this));
     }
 }

@@ -3,7 +3,7 @@
 * Licensed under the AGPL Version 3 license.
 */
 
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.21;
 
 
 /// @title Defines an interface for those who wants to trigger and log events related with
