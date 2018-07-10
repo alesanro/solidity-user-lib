@@ -48,7 +48,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         else if (use2FA &&
                 msg.sender == _initiator &&
                 getOracle() == ecrecover(
-                    keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _message)), 
+                    keccak256("\x19Ethereum Signed Message:\n32", _message), 
                     _v, 
                     _r, 
                     _s
@@ -59,7 +59,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
 
     /// @dev Guards functions against invocation when 2FA is enabled
     modifier only2FADisabled {
-        require(!use2FA, "2FA should be disabled");
+        require(!use2FA);
         _;
     }
 
@@ -79,7 +79,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
 
     /// @dev Guards functions against invocation not from delegatecall
     modifier onlyCall {
-        require(_allowDelegateCall(), "Only delegatecall is allowed");
+        require(_allowDelegateCall());
         _;
     }
 
@@ -112,7 +112,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     external
     returns (uint) 
     {
-        require(getOracle() != 0x0, "Oracle must be set before 2FA activation");
+        require(getOracle() != 0x0);
 
         if (use2FA != _enabled) {
             use2FA = _enabled;
@@ -174,7 +174,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     external
     returns (uint) 
     {
-        require(_newBackendProvider != 0x0, "Backend should not be 0x0");
+        require(_newBackendProvider != 0x0);
 
         backendProvider = UserBackendProviderInterface(_newBackendProvider);
         return OK;
@@ -192,7 +192,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     public 
     returns (uint) 
     {
-        require(_recoveryContract != 0x0, "Recovery contract address should not be 0x0");
+        require(_recoveryContract != 0x0);
 
         recoveryContract = _recoveryContract;
         return OK;
@@ -219,7 +219,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     public
     returns (uint) 
     {
-        require(_newAddress != 0x0, "Recovered user should not be 0x0");
+        require(_newAddress != 0x0);
 
         address _oldContractOwner = contractOwner;
         contractOwner = _newAddress;
@@ -262,7 +262,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         bytes32 _s
     )
     onlyCall
-    onlyVerified(contractOwner, keccak256(abi.encodePacked(_pass, msg.sender, _destination, _data, _value)), _v, _r, _s)
+    onlyVerified(contractOwner, keccak256(_pass, msg.sender, _destination, _data, _value), _v, _r, _s)
     public
     returns (bytes32)
     {

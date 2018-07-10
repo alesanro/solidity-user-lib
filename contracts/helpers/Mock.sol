@@ -32,7 +32,7 @@ contract Mock {
             }
         }
         callsCount++;
-        bytes32 callHash = keccak256(abi.encodePacked(msg.sender, msg.value, msg.data));
+        bytes32 callHash = keccak256(msg.sender, msg.value, msg.data);
         if (expectations[nextExpectation].callHash != callHash) {
             emit UnexpectedCall(nextExpectation, msg.sender, msg.value, msg.data, callHash);
             assembly {
@@ -56,7 +56,7 @@ contract Mock {
     function expect(address _from, uint _value, bytes _input, bytes32 _return) 
     public 
     {
-        expectations[++expectationsCount] = Expect(keccak256(abi.encodePacked(_from, _value, _input)), _return);
+        expectations[++expectationsCount] = Expect(keccak256(_from, _value, _input), _return);
     }
 
     function convertUIntToBytes32(uint _value) 

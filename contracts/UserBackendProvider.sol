@@ -19,7 +19,7 @@ contract UserBackendProvider is Roles2LibraryAdapter {
     /// @dev Address of user registry
     address private userRegistry;
 
-    constructor(address _roles2Library) Roles2LibraryAdapter(_roles2Library) public {
+    function UserBackendProvider(address _roles2Library) Roles2LibraryAdapter(_roles2Library) public {
     }
 
     /// @notice Gets address of current user backend contract
@@ -42,7 +42,7 @@ contract UserBackendProvider is Roles2LibraryAdapter {
     auth
     returns (uint)
     {
-        require(_userBackend != 0x0, "UserBackend should not be equal to 0x0");
+        require(_userBackend != 0x0);
 
         userBackend = _userBackend;
         return OK;
