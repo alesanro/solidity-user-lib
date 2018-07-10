@@ -3,7 +3,7 @@
 * Licensed under the AGPL Version 3 license.
 */
 
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.21;
 
 
 import "solidity-storage-lib/contracts/StorageAdapter.sol";
@@ -27,7 +27,7 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
     /// @dev mapping(owner => (set of user's contracts)
     StorageInterface.AddressesSetMapping internal ownedUsersStorage;
 
-    constructor(Storage _store, bytes32 _crate, address _roles2Library)
+    function UserRegistry(Storage _store, bytes32 _crate, address _roles2Library)
     StorageAdapter(_store, _crate)
     Roles2LibraryAdapter(_roles2Library)
     public 

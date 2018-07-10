@@ -37,14 +37,14 @@
     "solidity"
   ],
   "dependencies": {
-    "solidity-shared-lib": "chronobank/solidity-shared-lib#develop",
-    "solidity-eventshistory-lib": "chronobank/solidity-eventshistory-lib#develop",
-    "solidity-storage-lib": "chronobank/solidity-storage-lib#develop",
-    "solidity-roles-lib": "chronobank/solidity-roles-lib#develop"
+    "solidity-shared-lib": "alesanro/solidity-shared-lib#solc-downgrade-v0.4.21",
+    "solidity-eventshistory-lib": "alesanro/solidity-eventshistory-lib#solc-downgrade-v0.4.21",
+    "solidity-storage-lib": "alesanro/solidity-storage-lib#solc-downgrade-v0.4.21",
+    "solidity-roles-lib": "alesanro/solidity-roles-lib#solc-downgrade-v0.4.21"
   },
   "devDependencies": {
-    "ganache-cli": "6.1.4",
-    "truffle": "4.1.13",
+    "ganache-cli": "6.1.0",
+    "truffle": "4.1.5",
     "abi-decoder": "^1.0.9",
     "babel-polyfill": "^6.26.0",
     "babel-preset-es2015": "^6.24.1",
