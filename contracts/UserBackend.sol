@@ -9,6 +9,7 @@ pragma solidity ^0.4.21;
 import "solidity-shared-lib/contracts/Owned.sol";
 import "./TwoFactorAuthenticationSig.sol";
 import "./UserBase.sol";
+import "./UserRegistry.sol";
 
 
 contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
@@ -150,7 +151,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
 
         address _oldContractOwner = contractOwner;
         contractOwner = newAddress;
-        this.replaceOwner(_oldContractOwner, newAddress);
+        _userOwnershipChanged(_oldContractOwner);
 
         return OK;
     }
@@ -181,7 +182,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         address _oldContractOwner = contractOwner;
         _result = super.transferOwnership(_newOwner);
         if (_result) {
-            this.replaceOwner(_oldContractOwner, _newOwner);
+            _userOwnershipChanged(_oldContractOwner);
         }
 
         return _result;
@@ -207,7 +208,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         address _oldContractOwner = contractOwner;
         _result = super.claimContractOwnership();
         if (_result) {
-            this.replaceOwner(_oldContractOwner, contractOwner);
+            _userOwnershipChanged(_oldContractOwner);
         }
 
         return _result;
@@ -221,5 +222,18 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
 
         address _backend = backendProvider.getUserBackend();
         return address(this) != _backend && _backend != 0x0; 
+    }
+
+    function _getUserRegistry() private view returns (UserRegistry) {
+        return UserRegistry(backendProvider.getUserRegistry());
+    }
+
+    function _userOwnershipChanged(address _oldContractOwner) private {
+        this.replaceOwner(_oldContractOwner, contractOwner);
+
+        UserRegistry _userRegistry = _getUserRegistry();
+        if (address(_userRegistry) != 0x0) {
+            _userRegistry.userOwnershipChanged(this, _oldContractOwner);
+        }
     }
 }

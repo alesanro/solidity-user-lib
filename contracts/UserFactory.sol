@@ -10,6 +10,8 @@ import "solidity-shared-lib/contracts/Owned.sol";
 import "solidity-eventshistory-lib/contracts/MultiEventsHistoryAdapter.sol";
 import "solidity-roles-lib/contracts/Roles2LibraryAdapter.sol";
 import "./UserRouter.sol";
+import "./UserBackendProviderInterface.sol";
+import "./UserRegistry.sol";
 import "./UserInterface.sol";
 
 
@@ -78,6 +80,8 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         UserInterface user = UserInterface(new UserRouter(_owner, _recoveryContract, userBackendProvider));
         user.init(oracle, _use2FA);
 
+        _addUserToRegistry(address(user));
+
         address proxy = user.getUserProxy();
         UserFactory(getEventsHistory()).emitUserCreated(
             user,
@@ -111,5 +115,16 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
             _recoveryContract,
             _owner
         );
+    }
+
+    function _getUserRegistry() private view returns (UserRegistry) {
+        return UserRegistry(UserBackendProviderInterface(userBackendProvider).getUserRegistry());
+    }
+
+    function _addUserToRegistry(address _user) private {
+        UserRegistry _userRegistry = _getUserRegistry();
+        if (address(_userRegistry) != 0x0) {
+            _userRegistry.addUserContract(_user);
+        }
     }
 }

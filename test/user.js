@@ -1,6 +1,7 @@
 "use strict"
 
 const UserBackend = artifacts.require("UserBackend")
+const UserRegistry = artifacts.require("UserRegistry")
 const UserBackendProvider = artifacts.require("UserBackendProvider")
 const BumpedUserBackend = artifacts.require("BumpedUserBackend")
 const UserRouter = artifacts.require("UserRouter")
@@ -35,6 +36,7 @@ contract("User Workflow", accounts => {
 		storage: null,
 		storageManager: null,
 		userBackend: null,
+		userRegistry: null,
 		userBackendProvider: null,
 		userFactory: null,
 		rolesLibrary: null,
@@ -67,15 +69,32 @@ contract("User Workflow", accounts => {
 		contracts.rolesLibrary = await Roles2Library.new(contracts.storage.address, "RolesLib", { from: users.contractOwner, })
 		await contracts.storageManager.giveAccess(contracts.rolesLibrary.address, "RolesLib", { from: users.contractOwner, })
 		await contracts.rolesLibrary.setRootUser(users.contractOwner, true, { from: users.contractOwner, })
+		await contracts.rolesLibrary.setupEventsHistory(contracts.rolesLibrary.address, { from: users.contractOwner, })
+		
+		contracts.userRegistry = await UserRegistry.new(contracts.storage.address, "UserRegistry", contracts.rolesLibrary.address, { from: users.contractOwner, })
+		await contracts.storageManager.giveAccess(contracts.userRegistry.address, "UserRegistry", { from: users.contractOwner, })
+		await contracts.userRegistry.setupEventsHistory(contracts.userRegistry.address, { from: users.contractOwner, })
 
 		contracts.userBackendProvider = await UserBackendProvider.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
 		await contracts.userBackendProvider.setUserBackend(contracts.userBackend.address, { from: users.contractOwner, })
+		await contracts.userBackendProvider.setUserRegistry(contracts.userRegistry.address, { from: users.contractOwner, })
 
 		contracts.userFactory = await UserFactory.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
 		await contracts.userFactory.setUserBackendProvider(contracts.userBackendProvider.address, { from: users.contractOwner, })
 		await contracts.userFactory.setOracleAddress(users.oracle, { from: users.contractOwner, })
 
 		contracts.mock = await Mock.new()
+
+		// NOTE: HERE!!!! RIGHTS SHOULD BE GRANTED TO UserFactory TO ACCESS UserRegistry CONTRACT MODIFICATION
+		{
+			const Roles = { USER_REGISTRY_ROLE: 11, }
+
+			await contracts.rolesLibrary.addUserRole(contracts.userFactory.address, Roles.USER_REGISTRY_ROLE, { from: users.contractOwner, })
+			{
+				const sig = contracts.userRegistry.contract.addUserContract.getData(0x0).slice(0x0)
+				await contracts.rolesLibrary.addRoleCapability(Roles.USER_REGISTRY_ROLE, contracts.userRegistry.address, sig, { from: users.contractOwner, })
+			}
+		}
 
 		await reverter.promisifySnapshot()
 	})
@@ -257,6 +276,17 @@ contract("User Workflow", accounts => {
 			})
 		})
 
+		describe("user registry", () => {
+
+			after(async () => {
+				await reverter.promisifyRevert()
+			})
+
+			it("should have set up events history", async () => {
+				assert.notEqual(await contracts.userRegistry.getEventsHistory(), utils.zeroAddress)
+			})
+		})
+
 		describe("user backend provider", () => {
 
 			afterEach(async () => {
@@ -299,7 +329,49 @@ contract("User Workflow", accounts => {
 			it("should THROW and NOT allow to set 0x0 to userBackend", async () => {
 				await contracts.userBackendProvider.setUserBackend(utils.zeroAddress, { from: users.contractOwner, }).then(assert.fail, () => true)
 			})
+
+			it("should have non-null user registry value", async () => {
+				assert.notEqual(
+					await contracts.userBackendProvider.getUserRegistry.call(),
+					utils.zeroAddress
+				)
+			})
+
+			it("should protect setUserRegistry by auth", async () => {
+				const caller = users.user3
+				const newUserRegistry = "0x0000ffffffffffffffffffffffffffffffff0000"
+
+				await contracts.userBackendProvider.setRoles2Library(contracts.mock.address)
+				await contracts.mock.expect(
+					contracts.userBackendProvider.address,
+					0,
+					contracts.rolesLibrary.contract.canCall.getData(caller, contracts.userBackendProvider.address, contracts.userBackendProvider.contract.setUserRegistry.getData(0x0).slice(0, 10)),
+					await contracts.mock.convertUIntToBytes32(1)
+				)
+
+				assert.equal(
+					(await contracts.userBackendProvider.setUserRegistry.call(newUserRegistry, { from: caller, })).toNumber(),
+					ErrorScope.OK
+				)
+
+				await contracts.userBackendProvider.setUserRegistry(newUserRegistry, { from: caller, })
+				await assertExpectations()
+
+				assert.equal(
+					await contracts.userBackendProvider.getUserRegistry.call(),
+					newUserRegistry
+				)
+			})
+
+			it("should allow to set 0x0 to user registry", async () => {
+				await contracts.userBackendProvider.setUserRegistry(utils.zeroAddress, { from: users.contractOwner, })
+				assert.equal(
+					await contracts.userBackendProvider.getUserRegistry.call(),
+					utils.zeroAddress
+				)
+			})
 		})
+
 	})
 
 	context("creation", () => {
@@ -374,6 +446,33 @@ contract("User Workflow", accounts => {
 				userRouterAddress = event.args.user
 				userProxyAddress = event.args.proxy
 			}
+			{
+				const event = (await eventHelpers.findEvent([contracts.userRegistry,], tx, "UserContractAdded"))[0]
+				assert.isDefined(event)
+				assert.equal(event.args.userContract, userRouterAddress)
+			}
+		})
+
+		it("should be able to create a new user with no set up user registry", async () => {
+			await reverter.promisifySnapshot()
+			const snapshotId = reverter.snapshotId
+
+			await contracts.userBackendProvider.setUserRegistry(0x0, { from: users.contractOwner, })
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, users.recovery, false, { from: user, })
+			{
+				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
+				assert.isDefined(event)
+				assert.isDefined(event.args.user)
+				assert.isDefined(event.args.proxy)
+				assert.equal(event.args.recoveryContract, users.recovery)
+				assert.equal(event.args.owner, user)
+			}
+			{
+				const event = (await eventHelpers.findEvent([contracts.userRegistry,], tx, "UserContractAdded"))[0]
+				assert.isUndefined(event)
+			}
+
+			await reverter.promisifyRevert(snapshotId)
 		})
 
 		it("should have correct contract owner for a user", async () => {
@@ -388,6 +487,10 @@ contract("User Workflow", accounts => {
 				userProxyAddress,
 				await UserInterface.at(userRouterAddress).getUserProxy.call()
 			)
+		})
+
+		it("should have user contract be registered in UserRegistry", async () => {
+			assert.include(await contracts.userRegistry.getUserContracts(user), userRouterAddress)
 		})
 
 		it("should NOT allow to initialize newly created user from UserFactory with UNAUTHORIZED code", async () => {
@@ -474,10 +577,20 @@ contract("User Workflow", accounts => {
 			const snapshotId = reverter.snapshotId
 
 			const newUser = users.user2
-			await UserInterface.at(userRouterAddress).recoverUser(newUser, { from: newRecovery, })
+			const tx = await UserInterface.at(userRouterAddress).recoverUser(newUser, { from: newRecovery, })
 			assert.equal(await Owned.at(userRouterAddress).contractOwner.call(), newUser)
 			assert.isTrue(await UserInterface.at(userRouterAddress).isOwner(newUser), "current contract owner should be in multisig")
 			assert.isFalse(await UserInterface.at(userRouterAddress).isOwner(user), "previous contract owner should not be in multisig")
+			console.log(`#### ${await contracts.userBackendProvider.getUserRegistry()}`)
+			assert.notInclude(await contracts.userRegistry.getUserContracts(user), userRouterAddress)
+			assert.include(await contracts.userRegistry.getUserContracts(newUser), userRouterAddress)
+			{
+				const event = (await eventHelpers.findEvent([contracts.userRegistry,], tx, "UserContractChanged"))[0]
+				assert.isDefined(event)
+				assert.equal(event.args.userContract, userRouterAddress)
+				assert.equal(event.args.oldOwner, user)
+				assert.equal(event.args.owner, newUser)
+			}
 
 			await reverter.promisifyRevert(snapshotId)
 		})
@@ -536,6 +649,11 @@ contract("User Workflow", accounts => {
 			assert.isFalse(await UserInterface.at(userRouterAddress).isOwner(user), "old contract owner should not be in multisig")
 		})
 
+		it("should update record in user registry after ownership transfer", async () => {
+			assert.notInclude(await contracts.userRegistry.getUserContracts(user), userRouterAddress)
+			assert.include(await contracts.userRegistry.getUserContracts(newUser), userRouterAddress)
+		})
+
 		it("should be able to change&claim contract ownership", async () => {
 			await Owned.at(userRouterAddress).changeContractOwnership(user, { from: newUser, })
 			assert.isTrue(await Owned.at(userRouterAddress).claimContractOwnership.call({ from: user, }))
@@ -547,6 +665,23 @@ contract("User Workflow", accounts => {
 		it("multisig owner should change with ownership transfer", async () => {
 			assert.isTrue(await UserInterface.at(userRouterAddress).isOwner(user), "current contract owner should be in multisig")
 			assert.isFalse(await UserInterface.at(userRouterAddress).isOwner(newUser), "previous contract owner should not be in multisig")
+		})
+
+		it("should update record in user registry after ownership transfer", async () => {
+			assert.include(await contracts.userRegistry.getUserContracts(user), userRouterAddress)
+			assert.notInclude(await contracts.userRegistry.getUserContracts(newUser), userRouterAddress)
+		})
+
+		it("user should be able to transfer ownership with no set up user registry contract", async () => {
+			await reverter.promisifySnapshot()
+			const snapshotId = reverter.snapshotId
+
+			assert.equal(await Owned.at(userRouterAddress).contractOwner.call(), user)
+			await contracts.userBackendProvider.setUserRegistry(0x0, { from: users.contractOwner, })
+			await Owned.at(userRouterAddress).transferOwnership(newUser, { from: user, })
+			assert.equal(await Owned.at(userRouterAddress).contractOwner.call(), newUser)
+
+			await reverter.promisifyRevert(snapshotId)
 		})
 
 		it("should NOT allow to change&claim a contract ownership to another user by non-contract owner", async () => {
