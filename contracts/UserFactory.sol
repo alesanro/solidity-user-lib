@@ -28,6 +28,7 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
     );
 
     address public userBackendProvider;
+    address public userRecoveryAddress;
     address public oracle;
 
     constructor(address _roles2Library) Roles2LibraryAdapter(_roles2Library) public {
@@ -56,6 +57,15 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         return OK;
     }
 
+    function setUserRecoveryAddress(address _userRecoveryAddress)
+    auth
+    external
+    returns (uint)
+    {
+        userRecoveryAddress = _userRecoveryAddress;
+        return OK;
+    }
+
     function setOracleAddress(address _oracle)
     auth
     external
@@ -69,15 +79,12 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
 
     function createUserWithProxyAndRecovery(
         address _owner,
-        address _recoveryContract,
         bool _use2FA
     )
     public
     returns (uint) 
     {
-        require(_owner != 0x0, "Owner should not be equal to 0x0");
-
-        UserInterface user = UserInterface(new UserRouter(_owner, _recoveryContract, userBackendProvider));
+        UserInterface user = UserInterface(new UserRouter(_owner, userRecoveryAddress, userBackendProvider));
         user.init(oracle, _use2FA);
 
         _addUserToRegistry(address(user));
@@ -86,7 +93,7 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         UserFactory(getEventsHistory()).emitUserCreated(
             user,
             proxy,
-            _recoveryContract,
+            userRecoveryAddress,
             _owner
         );
         return OK;
