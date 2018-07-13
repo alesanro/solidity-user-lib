@@ -45,6 +45,7 @@
   "devDependencies": {
     "ganache-cli": "6.1.0",
     "truffle": "4.1.5",
+    "truffle-hdwallet-provider": "mikefluff/truffle-hdwallet-provider#7a2eccca1ba17c235a3ef258914ca74ea5f13014",
     "abi-decoder": "^1.0.9",
     "babel-polyfill": "^6.26.0",
     "babel-preset-es2015": "^6.24.1",
