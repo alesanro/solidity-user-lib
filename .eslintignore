@@ -1,0 +1,6 @@
+build/*
+contracts/*
+node_modules/*
+.*
+*.json
+truffle*

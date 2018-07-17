@@ -1,0 +1,17 @@
+*.log
+*.bac
+npm-debug.log
+
+contracts/helpers/
+contracts/migration/
+build/
+test/
+migrations/
+
+.travis.yml
+.solcover.js
+.gitattributes
+.es*
+.solium*
+truffle.js
+truffle*

@@ -1,0 +1,61 @@
+{
+  "name": "solidity-user-lib",
+  "version": "0.1.0",
+  "description": "User contracts Shared Library",
+  "main": "truffle.js",
+  "scripts": {
+    "test": "npx truffle test",
+    "release": "standard-version",
+    "compile": "npx truffle compile",
+    "compile:all": "npx truffle compile --all",
+    "testrpc": "npx ganache-cli -g 1 --gasLimit 4700000 --trace_request true | grep -Ev \"FilterSubprovider|eth_getFilterChanges\"",
+    "lint:sol": "npx solium --dir contracts",
+    "lint:js": "npx eslint . --fix",
+    "lint": "npm run lint:sol && npm run lint:js",
+    "coverage": "./node_modules/.bin/solidity-coverage"
+  },
+  "babel": {
+    "presets": [
+      [
+        "env",
+        {
+          "loose": true
+        }
+      ]
+    ]
+  },
+  "standard-version": {
+    "skip": {
+      "bump": true
+    }
+  },
+  "keywords": [
+    "smart-contracts",
+    "laborx",
+    "chronobank",
+    "ethereum",
+    "solidity"
+  ],
+  "dependencies": {
+    "solidity-shared-lib": "chronobank/solidity-shared-lib#v0.2.2",
+    "solidity-eventshistory-lib": "chronobank/solidity-eventshistory-lib#v0.1.1",
+    "solidity-storage-lib": "chronobank/solidity-storage-lib#v0.2.0",
+    "solidity-roles-lib": "chronobank/solidity-roles-lib#v0.1.0"
+  },
+  "devDependencies": {
+    "ganache-cli": "6.1.4",
+    "truffle": "4.1.13",
+    "abi-decoder": "^1.0.9",
+    "babel-polyfill": "^6.26.0",
+    "babel-preset-es2015": "^6.24.1",
+    "babel-register": "^6.26.0",
+    "eslint": "4",
+    "solium": "1",
+    "babel-eslint": "^8.2.5",
+    "coveralls": "^3.0.1",
+    "solidity-coverage": "^0.5.4",
+    "standard-version": "^4.0.0"
+  },
+  "author": "LaborX PTY",
+  "license": "AGPL-3.0"
+}
