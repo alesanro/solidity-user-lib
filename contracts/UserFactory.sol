@@ -15,6 +15,7 @@ import "./UserRegistry.sol";
 import "./UserInterface.sol";
 
 
+/// @title Creates new users for a system and registers them in UserRegistry contract.
 contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
 
     uint constant USER_FACTORY_SCOPE = 21000;
@@ -35,6 +36,10 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         _setEventsHistory(this);
     }
 
+    /// @notice Sets up events history address
+    /// Allowed only for authorized roles
+    /// @param _eventsHistory address of events history contract
+    /// @return result of an operation
     function setupEventsHistory(address _eventsHistory) 
     auth 
     external 
@@ -46,6 +51,10 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         return OK;
     }
 
+    /// @notice Sets up user backend provider address
+    /// Allowed only for authorized roles
+    /// @param _newUserBackendProvider address of user backend provider contract
+    /// @return result of an operation
     function setUserBackendProvider(address _newUserBackendProvider)
     auth
     external
@@ -57,6 +66,10 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         return OK;
     }
 
+    /// @notice Sets up user recovery address address
+    /// Allowed only for authorized roles
+    /// @param _userRecoveryAddress address of user recovery contract
+    /// @return result of an operation
     function setUserRecoveryAddress(address _userRecoveryAddress)
     auth
     external
@@ -66,6 +79,10 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         return OK;
     }
 
+    /// @notice Sets up 2FA oracle address
+    /// Allowed only for authorized roles
+    /// @param _oracle address of 2FA oracle
+    /// @return result of an operation
     function setOracleAddress(address _oracle)
     auth
     external
@@ -77,6 +94,13 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         return OK;
     }
 
+    /// @notice Creates brand new user in a system with passed owner and
+    /// could setup default mode of 2FA.
+    /// Allowed for any caller.
+    /// Emits UserCreated event.
+    /// @param _owner address of an owner of a user
+    /// @param _use2FA if true then 2FA will be enabled
+    /// @return result of an operation
     function createUserWithProxyAndRecovery(
         address _owner,
         bool _use2FA
@@ -99,6 +123,10 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         return OK;
     }
 
+    /// @notice Sets up new backend provider for a user
+    /// Allowed only for authorized roles
+    /// @param _user user that wants to have a new version of backend provider
+    /// @return result of an operation
     function updateBackendProviderForUser(UserInterface _user) 
     auth
     external
@@ -123,6 +151,8 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
             _owner
         );
     }
+
+    /* INTERNAL */
 
     function _getUserRegistry() private view returns (UserRegistry) {
         return UserRegistry(UserBackendProviderInterface(userBackendProvider).getUserRegistry());

@@ -37,10 +37,10 @@
     "solidity"
   ],
   "dependencies": {
-    "solidity-shared-lib": "chronobank/solidity-shared-lib#develop",
-    "solidity-eventshistory-lib": "chronobank/solidity-eventshistory-lib#develop",
-    "solidity-storage-lib": "chronobank/solidity-storage-lib#develop",
-    "solidity-roles-lib": "chronobank/solidity-roles-lib#develop"
+    "solidity-shared-lib": "chronobank/solidity-shared-lib#v0.2.2",
+    "solidity-eventshistory-lib": "chronobank/solidity-eventshistory-lib#v0.1.1",
+    "solidity-storage-lib": "chronobank/solidity-storage-lib#v0.2.0",
+    "solidity-roles-lib": "chronobank/solidity-roles-lib#v0.1.0"
   },
   "devDependencies": {
     "ganache-cli": "6.1.4",

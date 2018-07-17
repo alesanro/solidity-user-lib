@@ -10,8 +10,15 @@ import "./BaseByzantiumRouter.sol";
 import "./UserBase.sol";
 
 
+/// @title Provides lightweight frontend contract that uses delegatecall to pass
+/// every function call to a shared library (backend) contract. 
+/// Use UserInterface to make calls to this facade.
 contract UserRouter is BaseByzantiumRouter, UserOwned, UserBase {
 
+    /// @notice UserRouter constructor
+    /// @param _owner owner of created contract
+    /// @param _recoveryContract address of recovery account/contract
+    /// @param _backendProvider address of backend provider; will be used to fetch current backend implementation
     constructor(address _owner, address _recoveryContract, address _backendProvider) 
     public
     {

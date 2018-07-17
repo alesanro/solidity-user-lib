@@ -12,7 +12,12 @@ import "solidity-eventshistory-lib/contracts/MultiEventsHistoryAdapter.sol";
 import "./UserOwnershipListenerInterface.sol";
 
 
-/// @title TODO:
+/// @title Acts like a registry for existed users across a system.
+/// Upgradable (thanks to Storage contract), protected by roles access.
+/// Allows to keep records about who owns which contracts and update these records
+/// accordingly. Contracts should use UserOwnershipListenerInterface to sign about
+/// ownership changes and if this contract was added to the registry then the record
+/// will be updated, otherwise nothing happen.
 contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistoryAdapter, UserOwnershipListenerInterface {
 
     uint constant USER_REGISTRY_SCOPE = 30000;
@@ -35,6 +40,10 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
         ownedUsersStorage.init("ownedUsersStorage");
     }
 
+    /// @notice Sets up events history address
+    /// Allowed only for authorized roles.
+    /// @param _eventsHistory address of events history contract
+    /// @return result of an operation
     function setupEventsHistory(address _eventsHistory) 
     external 
     auth 
@@ -46,6 +55,9 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
         return OK;
     }
 
+    /// @notice Gets a list of contracts that are associated with provided user
+    /// @param _account user address to seek
+    /// @return array of contracts owned by a user
     function getUserContracts(address _account)
     public
     view
@@ -54,6 +66,12 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
         _users = store.get(ownedUsersStorage, bytes32(_account));
     }
 
+    /// @notice Registers a contract and associate it with its owner. Contract passed
+    /// here should be compatible with Owned contract interface.
+    /// Allowed only for authorized roles.
+    /// Emits UserContractAdded event.
+    /// @param _contract contract address to register; should support Owned interface
+    /// @return result of an operation
     function addUserContract(address _contract)
     external
     auth
@@ -68,6 +86,12 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
         return OK;
     }
 
+    /// @notice Removes a contract from provided user association. 
+    /// Mostly used to clean up unrelevant connections.
+    /// Allowed only for authorized roles.
+    /// Emits UserContractRemoved event.
+    /// @param _contract contract address to remove
+    /// @return result of an operation
     function removeUserContractFrom(address _contract, address _from)
     external
     auth
@@ -81,6 +105,11 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
         return OK;
     }
 
+    /// @notice Removes a contract from msg.sender association.
+    /// Not protected by a role auth, so any user who has record with
+    /// his contract could remove his contracts.
+    /// @param _contract contract address to remove
+    /// @return result of an operation
     function removeUserContract(address _contract)
     external
     returns (uint)
@@ -88,6 +117,11 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
         return this.removeUserContractFrom(_contract, msg.sender);
     }
 
+    /// @notice Listener function. Updates records when contract owner changed
+    /// in a stored contract. Does not allow to add a contract record through this function.
+    /// Emits UserContractChanged event.
+    /// @param _contract contract address that have a new owner
+    /// @param _from old contract owner address
     function userOwnershipChanged(address _contract, address _from) 
     external
     {
@@ -109,6 +143,8 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
         }
     }
 
+    /* EVENTS EMITTING (for events history) */
+
     function emitUserContractAdded(address _contract, address _owner) external {
         emit UserContractAdded(_self(), _contract, _owner);
     }
@@ -120,6 +156,8 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
     function emitUserContractChanged(address _contract, address _oldOwner, address _owner) external {
         emit UserContractChanged(_self(), _contract, _oldOwner, _owner);
     }
+
+    /* INTERNAL */
 
     function _addUserContract(address _contract, address _owner) private returns (bool) {
         if (!store.includes(ownedUsersStorage, bytes32(_owner), _contract)) {

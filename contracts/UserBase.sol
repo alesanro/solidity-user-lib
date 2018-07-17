@@ -22,6 +22,7 @@ contract UserOwned {
 /// and book an order of properties and an ability to combine with UserOwned contract
 contract UserBase {
     UserBackendProviderInterface public backendProvider;
+    // @dev address of a creater of the contract
     address public issuer;
     UserProxy internal userProxy;
     address internal recoveryContract;

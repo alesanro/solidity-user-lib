@@ -9,6 +9,10 @@ pragma solidity ^0.4.21;
 import "./MultiSig.sol";
 
 
+/// @title Intermediat contract that organizes two-factor authentication based on
+/// MultiSig smart contract. Contract should be initialized (_init() function called)
+/// before using any multisig-protected operations. It assumes that oracle will be stored
+/// as the second owner (at index 1).
 contract TwoFactorAuthenticationSig is MultiSig {
 
     function _init(address _initiator, address _oracle)
@@ -29,6 +33,8 @@ contract TwoFactorAuthenticationSig is MultiSig {
         this.replaceOwner(owners[1], _oracle);
     }
 
+    /// @notice Gets oracle address that is used to confirm txs.
+    /// @return address of an oracle
     function getOracle()
     public
     view

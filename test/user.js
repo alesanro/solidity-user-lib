@@ -70,7 +70,7 @@ contract("User Workflow", accounts => {
 		await contracts.storageManager.giveAccess(contracts.rolesLibrary.address, "RolesLib", { from: users.contractOwner, })
 		await contracts.rolesLibrary.setRootUser(users.contractOwner, true, { from: users.contractOwner, })
 		await contracts.rolesLibrary.setupEventsHistory(contracts.rolesLibrary.address, { from: users.contractOwner, })
-		
+
 		contracts.userRegistry = await UserRegistry.new(contracts.storage.address, "UserRegistry", contracts.rolesLibrary.address, { from: users.contractOwner, })
 		await contracts.storageManager.giveAccess(contracts.userRegistry.address, "UserRegistry", { from: users.contractOwner, })
 		await contracts.userRegistry.setupEventsHistory(contracts.userRegistry.address, { from: users.contractOwner, })

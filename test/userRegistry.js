@@ -54,7 +54,7 @@ contract("User Registry", accounts => {
 		contracts.storageManager = await StorageManager.new({ from: users.contractOwner, })
 		await contracts.storageManager.setupEventsHistory(contracts.storageManager.address, { from: users.contractOwner, })
 		await contracts.storage.setManager(contracts.storageManager.address, { from: users.contractOwner, })
-		
+
 		contracts.rolesLibrary = await Roles2Library.new(contracts.storage.address, "RolesLib", { from: users.contractOwner, })
 		await contracts.storageManager.giveAccess(contracts.rolesLibrary.address, "RolesLib", { from: users.contractOwner, })
 		await contracts.rolesLibrary.setRootUser(users.rootUser, true, { from: users.contractOwner, })
