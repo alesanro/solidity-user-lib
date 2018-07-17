@@ -1,4 +1,4 @@
-# User smart contracts library [![Build Status](https://travis-ci.org/ChronoBank/solidity-user-lib.svg?branch=main)](https://travis-ci.org/ChronoBank/solidity-user-lib)
+# User smart contracts library [![Build Status](https://travis-ci.org/ChronoBank/solidity-user-lib.svg?branch=master)](https://travis-ci.org/ChronoBank/solidity-user-lib)
 
 Part of [LaborX project](https://github.com/ChronoBank). Provides a set of smart contracts to organize an environment with users and 2FA access
 
