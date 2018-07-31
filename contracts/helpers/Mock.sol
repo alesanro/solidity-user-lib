@@ -67,6 +67,14 @@ contract Mock {
         return bytes32(_value);
     }
 
+    function convertAddressToBytes32(address _value) 
+    public 
+    pure 
+    returns (bytes32) 
+    {
+        return bytes32(_value);
+    }
+
     function convertToBytes32(bytes32 _value) 
     public 
     pure 

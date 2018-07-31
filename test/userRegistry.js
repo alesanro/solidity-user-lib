@@ -34,17 +34,21 @@ contract("User Registry", accounts => {
 		userRegistryEventsHistory: null,
 	}
 
-	const assertExpectations = async (expected = 0, callsCount = null) => {
+	const assertMockExpectations = async (mock, expected = 0, callsCount = null) => {
 		assert.equal(
-			(await contracts.mock.expectationsLeft()).toString(16),
+			(await mock.expectationsLeft()).toString(16),
 			expected.toString(16)
 		)
 
-		const expectationsCount = await contracts.mock.expectationsCount()
+		const expectationsCount = await mock.expectationsCount()
 		assert.equal(
-			(await contracts.mock.callsCount()).toString(16),
+			(await mock.callsCount()).toString(16),
 			callsCount === null ? expectationsCount.toString(16) : callsCount.toString(16)
 		)
+	}
+
+	const assertExpectations = async (expected = 0, callsCount = null) => {
+		await assertMockExpectations(contracts.mock, expected, callsCount)
 	}
 
 	before("setup", async () => {
@@ -567,6 +571,51 @@ contract("User Registry", accounts => {
 				})
 			})
 
+		})
+	})
+
+	context("utilities", () => {
+		const caller = users.user1
+
+		afterEach(async () => {
+			await reverter.promisifyRevert()
+		})
+
+		describe("is managing proxy", () => {
+
+			it("should NOT be true for not owned proxy", async () => {
+				await contracts.mock.expect(
+					contracts.userRegistry.address,
+					0,
+					contracts.ownedMock.contract.contractOwner.getData(),
+					await contracts.mock.convertAddressToBytes32(contracts.mock.address)
+				)
+				await contracts.mock.expect(
+					contracts.userRegistry.address,
+					0,
+					contracts.ownedMock.contract.contractOwner.getData(),
+					await contracts.mock.convertAddressToBytes32(users.user2)
+				)
+
+				assert.isFalse(await contracts.userRegistry.isManagingProxy(caller, contracts.mock.address))
+			})
+
+			it("should be true for owned proxy", async () => {
+				await contracts.mock.expect(
+					contracts.userRegistry.address,
+					0,
+					contracts.ownedMock.contract.contractOwner.getData(),
+					await contracts.mock.convertAddressToBytes32(contracts.mock.address)
+				)
+				await contracts.mock.expect(
+					contracts.userRegistry.address,
+					0,
+					contracts.ownedMock.contract.contractOwner.getData(),
+					await contracts.mock.convertAddressToBytes32(caller)
+				)
+
+				assert.isTrue(await contracts.userRegistry.isManagingProxy(caller, contracts.mock.address))
+			})
 		})
 	})
 
