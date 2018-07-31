@@ -28,4 +28,14 @@ contract UserInterface is MultiSig {
         uint _value,
         bool _throwOnFailedCall
         ) external returns (bytes32);
+    function forwardWithVRS(
+        address _destination,
+        bytes _data,
+        uint _value,
+        bool _throwOnFailedCall,
+        bytes _pass,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+        ) external returns (bytes32);
 }

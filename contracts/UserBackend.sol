@@ -24,8 +24,8 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
 
     /// @dev Guards and organizes 2FA access when it's turned on.
     modifier onlyMultiowned(address _initiator) {
-        if ((!use2FA && msg.sender == _initiator)
-            || msg.sender == address(this)
+        if ((!use2FA && msg.sender == _initiator) ||
+            msg.sender == address(this)
         ) {
             _;
         }
@@ -35,6 +35,24 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
                 mstore(0, 3) /// MULTISIG_ADDED
                 return(0, 32)
             }
+        }
+    }
+
+    modifier onlyVerified(address _initiator, bytes32 _message, uint8 _v, bytes32 _r, bytes32 _s) {
+        if ((!use2FA && msg.sender == _initiator) ||
+            msg.sender == address(this)
+        ) {
+            _;
+        }
+        else if (use2FA &&
+                msg.sender == _initiator &&
+                getOracle() == ecrecover(
+                    keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _message)), 
+                    _v, 
+                    _r, 
+                    _s
+        )) {
+            _;
         }
     }
 
@@ -227,6 +245,24 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     onlyMultiowned(contractOwner)
     public
     returns (bytes32) 
+    {
+        return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
+    }
+
+    function forwardWithVRS(
+        address _destination,
+        bytes _data,
+        uint _value,
+        bool _throwOnFailedCall,
+        bytes _pass,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    )
+    onlyCall
+    onlyVerified(contractOwner, keccak256(abi.encodePacked(_pass, msg.sender, _destination, _data, _value)), _v, _r, _s)
+    public
+    returns (bytes32)
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
     }

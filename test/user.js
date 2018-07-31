@@ -18,10 +18,13 @@ const Reverter = require("./helpers/reverter")
 const ErrorScope = require("../common/errors")
 const eventHelpers = require("./helpers/eventsHelper")
 const utils = require("./helpers/utils")
+const web3Utils = require("web3-utils")
+const Web3Accounts = require("web3-eth-accounts")
 
 contract("User Workflow", accounts => {
 
 	const reverter = new Reverter(web3)
+	const web3Accounts = new Web3Accounts(web3.currentProvider.address)
 
 	const users = {
 		contractOwner: accounts[0],
@@ -30,6 +33,12 @@ contract("User Workflow", accounts => {
 		user3: accounts[3],
 		oracle: accounts[7],
 		recovery: accounts[8],
+	}
+
+	const privateKeys = {
+		[users.user1]: "0x2ed950bc0ff7fc1f62aa3b302437de9763d81dcde4ce58291756f84748d98ce9",
+		[users.user2]: "0xdaeb307eb13b4717d01d9f175ea3ed94374da8fefa52082379d2955579ce628a",
+		[users.oracle]: "0x1e3816bb73ad4a70ea3e7606f930e2d2d492ab9d5c26776656191b1be2ae0204",
 	}
 
 	const contracts = {
@@ -54,6 +63,96 @@ contract("User Workflow", accounts => {
 			(await contracts.mock.callsCount()).toString(16),
 			callsCount === null ? expectationsCount.toString(16) : callsCount.toString(16)
 		)
+	}
+
+	const assertNoMultisigPresence = async tx => {
+		const notEmittedEvents = [
+			"Confirmation",
+			"Submission",
+			"Execution",
+		]
+		const events = await eventHelpers.findEvents([contracts.userBackend,], tx, e => notEmittedEvents.indexOf(e) >= 0)
+		assert.lengthOf(events, 0)
+	}
+
+	/// @return transactionId
+	const assertMultisigSubmitPresence = async ({ tx, userProxy, user, }) => {
+		let transactionId
+		{
+			const notEmittedEvents = [
+				"Execution",
+				"Forwarded",
+			]
+			const events = await eventHelpers.findEvents([ userProxy, contracts.userBackend, ], tx, e => notEmittedEvents.indexOf(e) >= 0)
+			assert.lengthOf(events, 0)
+		}
+		{
+			{
+				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Submission"))[0]
+				assert.isDefined(event)
+				assert.isDefined(event.args.transactionId)
+
+				transactionId = event.args.transactionId
+			}
+			{
+				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Confirmation"))[0]
+				assert.isDefined(event)
+				assert.equal(event.args.sender, user)
+				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16))
+			}
+		}
+
+		return transactionId
+	}
+
+	const assertMultisigExecutionPresence = async ({
+		tx, transactionId, userRouter, oracle,
+	}) => {
+		{
+			const notEmittedEvents = [
+				"Submission",
+			]
+			const events = await eventHelpers.findEvents([ userRouter, contracts.userBackend, ], tx, e => notEmittedEvents.indexOf(e) >= 0)
+			assert.lengthOf(events, 0)
+		}
+		{
+			{
+				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Confirmation"))[0]
+				assert.isDefined(event)
+				assert.equal(event.args.sender, oracle)
+				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16))
+			}
+			{
+				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Execution"))[0]
+				assert.isDefined(event)
+				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16))
+			}
+		}
+	}
+
+	const signMessage = ({ message, oracle, }) => {
+		return web3Accounts.sign(message, privateKeys[oracle])
+	}
+
+	const getMessageFrom = ({
+		pass, sender, destination, data, value,
+	}) => {
+		return web3Utils.soliditySha3({
+			type: "bytes",
+			value: pass,
+		}, {
+			type: "address",
+			value: sender,
+		}, {
+			type: "address",
+			value: destination,
+		}, {
+			type: "bytes",
+			value: data,
+		}, {
+			type: "uint256",
+			value: value,
+		})
 	}
 
 	before("setup", async () => {
@@ -838,7 +937,6 @@ contract("User Workflow", accounts => {
 		})
 
 		describe("oracle", () => {
-
 		})
 
 		describe("backend", () => {
@@ -900,7 +998,6 @@ contract("User Workflow", accounts => {
 				}
 			})
 		})
-
 
 		describe("backend provider", () => {
 			let newUserBackendProvider
@@ -992,69 +1089,6 @@ contract("User Workflow", accounts => {
 
 		describe("2FA", () => {
 
-			const assertNoMultisigPresence = async tx => {
-				const notEmittedEvents = [
-					"Confirmation",
-					"Submission",
-					"Execution",
-				]
-				const events = await eventHelpers.findEvents([contracts.userBackend,], tx, e => notEmittedEvents.indexOf(e) >= 0)
-				assert.lengthOf(events, 0)
-			}
-
-			/// @return transactionId
-			const assertMultisigSubmitPresence = async (tx, userOwner = user) => {
-				let transactionId
-				{
-					const notEmittedEvents = [
-						"Execution",
-						"Forwarded",
-					]
-					const events = await eventHelpers.findEvents([ userProxy, contracts.userBackend, ], tx, e => notEmittedEvents.indexOf(e) >= 0)
-					assert.lengthOf(events, 0)
-				}
-				{
-					{
-						const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Submission"))[0]
-						assert.isDefined(event)
-						assert.isDefined(event.args.transactionId)
-
-						transactionId = event.args.transactionId
-					}
-					{
-						const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Confirmation"))[0]
-						assert.isDefined(event)
-						assert.equal(event.args.sender, userOwner)
-						assert.equal(event.args.transactionId.toString(16), transactionId.toString(16))
-					}
-				}
-
-				return transactionId
-			}
-
-			const assertMultisigExecutionPresence = async (tx, transactionId, oracle = users.oracle) => {
-				{
-					const notEmittedEvents = [
-						"Submission",
-					]
-					const events = await eventHelpers.findEvents([ userRouter, contracts.userBackend, ], tx, e => notEmittedEvents.indexOf(e) >= 0)
-					assert.lengthOf(events, 0)
-				}
-				{
-					{
-						const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Confirmation"))[0]
-						assert.isDefined(event)
-						assert.equal(event.args.sender, oracle)
-						assert.equal(event.args.transactionId.toString(16), transactionId.toString(16))
-					}
-					{
-						const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Execution"))[0]
-						assert.isDefined(event)
-						assert.equal(event.args.transactionId.toString(16), transactionId.toString(16))
-					}
-				}
-			}
-
 			after(async () => {
 				await reverter.promisifyRevert()
 			})
@@ -1136,7 +1170,7 @@ contract("User Workflow", accounts => {
 
 					const tx = await userRouter.forward(contracts.mock.address, data, 0, true, { from: user, }).then(r => r, assert.fail)
 					await assertExpectations(1, 0)
-					transactionId = await assertMultisigSubmitPresence(tx)
+					transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
 				})
 
 				it("and anyone THROW and should NOT able to confirm submitted transaction and execute forward call", async () => {
@@ -1150,7 +1184,9 @@ contract("User Workflow", accounts => {
 				it("and oracle should confirm submitted transaction and execute forward call", async () => {
 					const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, }).then(r => r, assert.fail)
 					await assertExpectations(0, 1)
-					await assertMultisigExecutionPresence(tx, transactionId)
+					await assertMultisigExecutionPresence({
+						tx, transactionId, userRouter, oracle: users.oracle,
+					})
 					{
 						const event = (await eventHelpers.findEvent([userProxy,], tx, "Forwarded"))[0]
 						assert.isDefined(event)
@@ -1202,12 +1238,14 @@ contract("User Workflow", accounts => {
 
 					it("should allow to submit update of recovery contract by an user", async () => {
 						const tx = await userRouter.setRecoveryContract(newRecoveryAddress, { from: user, })
-						transactionId = await assertMultisigSubmitPresence(tx)
+						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
 					})
 
 					it("should allow to confirm update of recovery contract by an oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-						await assertMultisigExecutionPresence(tx, transactionId)
+						await assertMultisigExecutionPresence({
+							tx, transactionId, userRouter, oracle: users.oracle,
+						})
 					})
 
 					it("should have a changed recovery address", async () => {
@@ -1311,12 +1349,14 @@ contract("User Workflow", accounts => {
 
 					it("should allow to submit update of user proxy by a user", async () => {
 						const tx = await userRouter.setUserProxy(newUserProxyAddress, { from: user, })
-						transactionId = await assertMultisigSubmitPresence(tx)
+						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
 					})
 
 					it("should allow to confirm update of user proxy contract by an oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-						await assertMultisigExecutionPresence(tx, transactionId)
+						await assertMultisigExecutionPresence({
+							tx, transactionId, userRouter, oracle: users.oracle,
+						})
 					})
 
 					it("should have a changed user proxy address", async () => {
@@ -1345,12 +1385,14 @@ contract("User Workflow", accounts => {
 
 					it("should allow to submit update of oracle by a user", async () => {
 						const tx = await userRouter.setOracle(newOracleAddress, { from: user, })
-						transactionId = await assertMultisigSubmitPresence(tx)
+						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
 					})
 
 					it("should allow to confirm update of oracle by an oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-						await assertMultisigExecutionPresence(tx, transactionId)
+						await assertMultisigExecutionPresence({
+							tx, transactionId, userRouter, oracle: users.oracle,
+						})
 					})
 
 					it("should have a changed oracle address", async () => {
@@ -1366,7 +1408,7 @@ contract("User Workflow", accounts => {
 
 					it("should be able to perform to submit new oracle change by a user to an old oracle", async () => {
 						const tx = await userRouter.setOracle(users.oracle, { from: user, })
-						transactionId = await assertMultisigSubmitPresence(tx)
+						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
 					})
 
 					it("should THROW and NOT allow to confirm update of oracle by an old oracle", async () => {
@@ -1375,7 +1417,9 @@ contract("User Workflow", accounts => {
 
 					it("should allow to confirm update of oracle by a new oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: newOracleAddress, })
-						await assertMultisigExecutionPresence(tx, transactionId, newOracleAddress)
+						await assertMultisigExecutionPresence({
+							tx, transactionId, userRouter, oracle: newOracleAddress,
+						})
 					})
 
 					it("should have an old oracle address back", async () => {
@@ -1403,12 +1447,14 @@ contract("User Workflow", accounts => {
 
 					it("should allow to submit update of 2FA by a user", async () => {
 						const tx = await userRouter.set2FA(false, { from: user, })
-						transactionId = await assertMultisigSubmitPresence(tx)
+						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
 					})
 
 					it("should allow to confirm update of 2FA contract by an oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-						await assertMultisigExecutionPresence(tx, transactionId)
+						await assertMultisigExecutionPresence({
+							tx, transactionId, userRouter, oracle: users.oracle,
+						})
 					})
 
 					it("should have a changed 2FA address", async () => {
@@ -1417,6 +1463,263 @@ contract("User Workflow", accounts => {
 				})
 			})
 
+		})
+
+		describe("2FA with signed data", () => {
+			const pass = "0x1234"
+			let message
+			let signatureDetails
+			let data
+
+			before(async () => {
+				data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+			})
+
+			after(async () => {
+				await reverter.promisifyRevert()
+			})
+
+			describe("for forwardWithVRS", () => {
+
+				describe("with disabled 2FA", () => {
+
+					it("should have use2FA = false", async () => {
+						assert.isFalse(await userRouter.use2FA())
+					})
+
+					it("should allow to forward invocation without submitting tx", async () => {
+						await contracts.mock.expect(
+							userProxy.address,
+							0,
+							data,
+							await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+						)
+
+						const tx = await userRouter.forwardWithVRS(
+							contracts.mock.address,
+							data,
+							0,
+							true,
+							pass,
+							0,
+							"",
+							"",
+							{ from: user, }
+						)
+						await assertExpectations()
+						await assertNoMultisigPresence(tx)
+					})
+				})
+
+				describe("with enabled 2FA", () => {
+
+					before(async () => {
+						await userRouter.set2FA(true, { from: user, })
+					})
+
+					it("should have use2FA = true", async () => {
+						assert.isTrue(await userRouter.use2FA())
+					})
+
+					it("should NOT allow to forward invocation without proper v,r,s", async () => {
+						await contracts.mock.expect(
+							userProxy.address,
+							0,
+							data,
+							await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+						)
+
+						const tx = await userRouter.forwardWithVRS(
+							contracts.mock.address,
+							data,
+							0,
+							true,
+							pass,
+							0,
+							"",
+							"",
+							{ from: user, }
+						)
+						await assertExpectations(1, 1)
+						await assertNoMultisigPresence(tx)
+						await contracts.mock.skipExpectations()
+					})
+
+					describe("signed by invalid oracle", () => {
+						const notOracle = users.user2
+
+						before(async () => {
+							message = getMessageFrom({
+								pass, sender: user, destination: contracts.mock.address, data, value: 0,
+							})
+							signatureDetails = signMessage({ message, oracle: notOracle, })
+						})
+
+						it("should NOT allow to forward invocation", async () => {
+							await contracts.mock.expect(
+								userProxy.address,
+								0,
+								data,
+								await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+							)
+
+							const tx = await userRouter.forwardWithVRS(
+								contracts.mock.address,
+								data,
+								0,
+								true,
+								pass,
+								signatureDetails.v,
+								signatureDetails.r,
+								signatureDetails.s,
+								{ from: user, }
+							)
+							await assertExpectations(1, 1)
+							await assertNoMultisigPresence(tx)
+							await contracts.mock.skipExpectations()
+						})
+					})
+
+					describe("signed with invalid sender", () => {
+						const notUser = users.user2
+
+						before(async () => {
+							message = getMessageFrom({
+								pass, sender: user, destination: contracts.mock.address, data, value: 0,
+							})
+							signatureDetails = signMessage({ message, oracle: users.oracle, })
+						})
+
+						it("should NOT allow to forward invocation", async () => {
+							await contracts.mock.expect(
+								userProxy.address,
+								0,
+								data,
+								await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+							)
+
+							const tx = await userRouter.forwardWithVRS(
+								contracts.mock.address,
+								data,
+								0,
+								true,
+								pass,
+								signatureDetails.v,
+								signatureDetails.r,
+								signatureDetails.s,
+								{ from: notUser, }
+							)
+							await assertExpectations(1, 1)
+							await assertNoMultisigPresence(tx)
+							await contracts.mock.skipExpectations()
+						})
+					})
+
+					describe("signed correctly with invalid data", () => {
+						let invalidSendData
+
+						before(async () => {
+							invalidSendData = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(users.user2, true)
+							message = getMessageFrom({
+								pass, sender: user, destination: contracts.mock.address, data, value: 0,
+							})
+							signatureDetails = signMessage({ message, oracle: users.oracle, })
+						})
+
+						it("should NOT allow to forward invocation", async () => {
+							await contracts.mock.expect(
+								userProxy.address,
+								0,
+								data,
+								await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+							)
+
+							const tx = await userRouter.forwardWithVRS(
+								contracts.mock.address,
+								invalidSendData,
+								0,
+								true,
+								pass,
+								signatureDetails.v,
+								signatureDetails.r,
+								signatureDetails.s,
+								{ from: user, }
+							)
+							await assertExpectations(1, 1)
+							await assertNoMultisigPresence(tx)
+							await contracts.mock.skipExpectations()
+						})
+					})
+
+					describe("signed correctly with invalid pass", () => {
+						const invalidPass = "0xffffffff"
+
+						before(async () => {
+							message = getMessageFrom({
+								pass, sender: user, destination: contracts.mock.address, data, value: 0,
+							})
+							signatureDetails = signMessage({ message, oracle: users.oracle, })
+						})
+
+						it("should NOT allow to forward invocation", async () => {
+							await contracts.mock.expect(
+								userProxy.address,
+								0,
+								data,
+								await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+							)
+
+							const tx = await userRouter.forwardWithVRS(
+								contracts.mock.address,
+								data,
+								0,
+								true,
+								invalidPass,
+								signatureDetails.v,
+								signatureDetails.r,
+								signatureDetails.s,
+								{ from: user, }
+							)
+							await assertExpectations(1, 1)
+							await assertNoMultisigPresence(tx)
+							await contracts.mock.skipExpectations()
+						})
+					})
+
+					describe("signed correctly", () => {
+
+						before(async () => {
+							message = getMessageFrom({
+								pass, sender: user, destination: contracts.mock.address, data, value: 0,
+							})
+							signatureDetails = signMessage({ message, oracle: users.oracle, })
+						})
+
+						it("should allow to forward invocation", async () => {
+							await contracts.mock.expect(
+								userProxy.address,
+								0,
+								data,
+								await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+							)
+
+							const tx = await userRouter.forwardWithVRS(
+								contracts.mock.address,
+								data,
+								0,
+								true,
+								pass,
+								signatureDetails.v,
+								signatureDetails.r,
+								signatureDetails.s,
+								{ from: user, }
+							)
+							await assertExpectations(0, 2)
+							await assertNoMultisigPresence(tx)
+						})
+					})
+				})
+			})
 		})
 	})
 })

@@ -230,6 +230,20 @@ contract MultiSig {
         executeTransaction(transactionId);
     }
 
+    function confirmTransactionWithVRS(uint transactionId, bytes pass, uint8 _v, bytes32 _r, bytes32 _s)
+    transactionExists(transactionId)
+    public
+    {
+        bytes memory _prefix = "\x19Ethereum Signed Message:\n32";
+        bytes32 _message = keccak256(abi.encodePacked(pass, transactionId, address(this)));
+        address _owner = ecrecover(keccak256(abi.encodePacked(_prefix, _message)), _v, _r, _s);
+        require(isOwner[_owner], "Owner does not exist");
+        require(confirmations[transactionId][_owner], "Transaction is already confirmed by this owner");
+
+        emit Confirmation(_owner, transactionId);
+        executeTransaction(transactionId);
+    }
+
     /// @dev Allows an owner to revoke a confirmation for a transaction.
     /// @param transactionId Transaction ID.
     function revokeConfirmation(uint transactionId)
