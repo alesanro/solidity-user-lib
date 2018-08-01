@@ -143,6 +143,21 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
         }
     }
 
+    /// @notice Says if user account `_account` owns a user proxy contract `_accountProxy`
+    /// and could manage it through UserInterface interface.
+    /// Checks if UserInterface#getUserProxy() == _accountProxy && UserInterface#contractOwner == _account
+    /// @param _account user account that he has private key access
+    /// @param _accountProxy user proxy contract or UserInterface#getUserProxy()
+    /// @return 'true' if an account has access to user proxy, 'false' otherwise
+    function isManagingProxy(address _account, address _accountProxy)
+    public
+    view
+    returns (bool)
+    {
+        address _userRouter = Owned(_accountProxy).contractOwner();
+        return _account == Owned(_userRouter).contractOwner();
+    }
+
     /* EVENTS EMITTING (for events history) */
 
     function emitUserContractAdded(address _contract, address _owner) external {

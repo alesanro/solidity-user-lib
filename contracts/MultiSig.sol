@@ -12,10 +12,17 @@ contract MultiSig {
     event Submission(uint indexed transactionId);
     event Execution(uint indexed transactionId);
     event ExecutionFailure(uint indexed transactionId);
+    event Cancelled(uint indexed transactionId);
     event Deposit(address indexed sender, uint value);
     event OwnerAddition(address indexed owner);
     event OwnerRemoval(address indexed owner);
     event RequirementChange(uint required);
+
+    uint8 constant STATUS_NOT_INITIALIZED = 0;
+    uint8 constant STATUS_PENDING = 1 << 0;
+    uint8 constant STATUS_READY = 1 << 1;
+    uint8 constant STATUS_EXECUTED = 1 << 2;
+    uint8 constant STATUS_CANCELLED = 1 << 3;
 
     mapping (uint => Transaction) public transactions;
     mapping (uint => mapping (address => bool)) public confirmations;
@@ -28,7 +35,7 @@ contract MultiSig {
         address destination;
         uint value;
         bytes data;
-        bool executed;
+        uint8 status;
     }
 
     modifier onlySelf() {
@@ -53,7 +60,7 @@ contract MultiSig {
     }
 
     modifier transactionExists(uint transactionId) {
-        if (transactions[transactionId].destination == 0) {
+        if (transactions[transactionId].status == STATUS_NOT_INITIALIZED) {
             revert("[MultiSig]: tx should exist");
         }
         _;
@@ -74,7 +81,8 @@ contract MultiSig {
     }
 
     modifier notExecuted(uint transactionId) {
-        if (transactions[transactionId].executed) {
+        uint8 _status = transactions[transactionId].status;
+        if ((_status & (STATUS_EXECUTED | STATUS_CANCELLED)) != 0) {
             revert("[MultiSig]: tx should not be executed");
         }
         _;
@@ -230,6 +238,20 @@ contract MultiSig {
         executeTransaction(transactionId);
     }
 
+    function confirmTransactionWithVRS(uint transactionId, bytes pass, uint8 v, bytes32 r, bytes32 s)
+    transactionExists(transactionId)
+    public
+    {
+        bytes memory _prefix = "\x19Ethereum Signed Message:\n32";
+        bytes32 _message = keccak256(abi.encodePacked(pass, transactionId, address(this)));
+        address _owner = ecrecover(keccak256(abi.encodePacked(_prefix, _message)), v, r, s);
+        require(isOwner[_owner], "Owner does not exist");
+        require(confirmations[transactionId][_owner], "Transaction is already confirmed by this owner");
+
+        emit Confirmation(_owner, transactionId);
+        executeTransaction(transactionId);
+    }
+
     /// @dev Allows an owner to revoke a confirmation for a transaction.
     /// @param transactionId Transaction ID.
     function revokeConfirmation(uint transactionId)
@@ -240,6 +262,12 @@ contract MultiSig {
     {
         delete confirmations[transactionId][msg.sender];
         emit Revocation(msg.sender, transactionId);
+        uint _count = getConfirmationCount(transactionId);
+        if (_count == 0) {
+            Transaction storage _tx = transactions[transactionId];
+            _tx.status = STATUS_CANCELLED;
+            emit Cancelled(transactionId);
+        }
     }
 
     /// @dev Allows anyone to execute a confirmed transaction.
@@ -250,14 +278,14 @@ contract MultiSig {
     {
         if (isConfirmed(transactionId)) {
             Transaction storage _tx = transactions[transactionId];
-            _tx.executed = true;
+            _tx.status = STATUS_EXECUTED;
             // solium-disable security/no-call-value
             if (_tx.destination.call.value(_tx.value)(_tx.data)) {
                 emit Execution(transactionId);
             }
             else {
                 emit ExecutionFailure(transactionId);
-                _tx.executed = false;
+                _tx.status = STATUS_READY;
             }
         }
     }
@@ -270,15 +298,9 @@ contract MultiSig {
     view
     returns (bool)
     {
-        uint count = 0;
-        for (uint i = 0; i < owners.length; ++i) {
-            if (confirmations[transactionId][owners[i]]) {
-                count += 1;
-            }
-
-            if (count == required) {
-                return true;
-            }
+        uint count = getConfirmationCount(transactionId);
+        if (count == required) {
+            return true;
         }
     }
 
@@ -300,7 +322,7 @@ contract MultiSig {
             destination: destination,
             value: value,
             data: data,
-            executed: false
+            status: STATUS_PENDING
         });
         transactionCount += 1;
         emit Submission(transactionId);
@@ -325,20 +347,18 @@ contract MultiSig {
     }
 
     /// @dev Returns total number of transactions after filers are applied.
-    /// @param pending Include pending transactions.
-    /// @param executed Include executed transactions.
+    /// @param statusMask mask of statuses that should be included in a fetch
     /// @return Total number of transactions after filters are applied.
-    function getTransactionCount(bool pending, bool executed)
+    function getTransactionCount(uint8 statusMask)
     public
     view
     returns (uint count)
     {
-        for (uint i = 0; i < transactionCount; ++i)
-            if (pending && !transactions[i].executed
-                || executed && transactions[i].executed
-            ) {
+        for (uint i = 0; i < transactionCount; ++i) {
+            if ((transactions[i].status & statusMask) != 0) {
                 count += 1;
             }
+        }
     }
 
     /// @dev Returns list of owners.
@@ -378,10 +398,9 @@ contract MultiSig {
     /// @dev Returns list of transaction IDs in defined range.
     /// @param from Index start position of transaction array.
     /// @param to Index end position of transaction array.
-    /// @param pending Include pending transactions.
-    /// @param executed Include executed transactions.
+    /// @param statusMask mask of statuses that should be included in a fetch
     /// @return Returns array of transaction IDs.
-    function getTransactionIds(uint from, uint to, bool pending, bool executed)
+    function getTransactionIds(uint from, uint to, uint8 statusMask)
     public
     view
     returns (uint[] _transactionIds)
@@ -390,9 +409,7 @@ contract MultiSig {
         uint count = 0;
         uint i;
         for (i = 0; i < transactionCount; ++i) {
-            if (pending && !transactions[i].executed
-                || executed && transactions[i].executed
-            ) {
+            if ((transactions[i].status & statusMask) != 0) {
                 transactionIdsTemp[count] = i;
                 count += 1;
             }

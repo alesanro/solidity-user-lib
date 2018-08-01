@@ -7,10 +7,11 @@ pragma solidity ^0.4.21;
 
 
 import "./MultiSig.sol";
+import "./UserEmitter.sol";
 
 
 /// @title Interface of a User that is created by UserFactory. Supports multisig operations.
-contract UserInterface is MultiSig {
+contract UserInterface is MultiSig, UserEmitter {
     function init(address _oracle, bool _enable2FA) external returns (uint);
     function getUserProxy() external view returns (address);
     function setUserProxy(address _userProxy) external returns (uint);
@@ -27,5 +28,15 @@ contract UserInterface is MultiSig {
         bytes _data,
         uint _value,
         bool _throwOnFailedCall
+        ) external returns (bytes32);
+    function forwardWithVRS(
+        address _destination,
+        bytes _data,
+        uint _value,
+        bool _throwOnFailedCall,
+        bytes _pass,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
         ) external returns (bytes32);
 }
