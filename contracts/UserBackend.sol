@@ -21,7 +21,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     uint constant OK = 1;
     uint constant MULTISIG_ADDED = 3;
 
-    bytes32 public version = "1.0.0";
+    bytes32 public version = "1.1.0";
 
     /// @dev Guards and organizes 2FA access when it's turned on.
     modifier onlyMultiowned(address _initiator) {
