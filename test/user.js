@@ -520,9 +520,14 @@ contract("User Workflow", accounts => {
 
 		let userRouterAddress
 		let userProxyAddress
+		let snapshotId
+
+		before(async () => {
+			snapshotId = reverter.snapshotId
+		})
 
 		after(async () => {
-			await reverter.promisifyRevert()
+			await reverter.promisifyRevert(snapshotId)
 		})
 
 		it("should THROW and NOT allow to set 2FA for a user without proper init (calling 'init' function)", async () => {
@@ -1129,6 +1134,10 @@ contract("User Workflow", accounts => {
 					)
 
 					const tx = await userRouter.forward(contracts.mock.address, data, 0, true, { from: user, }).then(r => r, assert.fail)
+					{
+						const event = (await eventHelpers.findEvent([userRouter,], tx, "User2FAChanged"))[0]
+						assert.isUndefined(event)
+					}
 					await assertNoMultisigPresence(tx)
 				})
 
@@ -1147,7 +1156,18 @@ contract("User Workflow", accounts => {
 				})
 
 				it("and user should be able to turn on 2FA", async () => {
-					await userRouter.set2FA(true, { from: user, })
+					const tx = await userRouter.set2FA(true, { from: user, })
+					{
+						const event = (await eventHelpers.findEvent([userRouter,], tx, "User2FAChanged"))[0]
+						assert.isDefined(event)
+						assert.equal(event.address, userRouter.address)
+						assert.equal(event.name, 'User2FAChanged')
+						assert.equal(event.args.self, userRouter.address)
+						assert.equal(event.args.initiator, user)
+						assert.equal(event.args.user, userRouter.address)
+						assert.equal(event.args.proxy, await userRouter.getUserProxy())
+						assert.isTrue(event.args.enabled)
+					}
 					assert.isTrue(await userRouter.use2FA.call())
 				})
 
@@ -1448,6 +1468,10 @@ contract("User Workflow", accounts => {
 					it("should allow to submit update of 2FA by a user", async () => {
 						const tx = await userRouter.set2FA(false, { from: user, })
 						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+						{
+							const event = (await eventHelpers.findEvent([userRouter,], tx, "User2FAChanged"))[0]
+							assert.isUndefined(event)
+						}
 					})
 
 					it("should allow to confirm update of 2FA contract by an oracle", async () => {
@@ -1455,6 +1479,17 @@ contract("User Workflow", accounts => {
 						await assertMultisigExecutionPresence({
 							tx, transactionId, userRouter, oracle: users.oracle,
 						})
+						{
+							const event = (await eventHelpers.findEvent([userRouter,], tx, "User2FAChanged"))[0]
+							assert.isDefined(event)
+							assert.equal(event.address, userRouter.address)
+							assert.equal(event.name, 'User2FAChanged')
+							assert.equal(event.args.self, userRouter.address)
+							assert.equal(event.args.initiator, user)
+							assert.equal(event.args.user, userRouter.address)
+							assert.equal(event.args.proxy, userProxy.address)
+							assert.isFalse(event.args.enabled)
+						}
 					})
 
 					it("should have a changed 2FA address", async () => {

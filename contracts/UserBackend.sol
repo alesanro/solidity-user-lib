@@ -9,6 +9,7 @@ pragma solidity ^0.4.21;
 import "solidity-shared-lib/contracts/Owned.sol";
 import "./TwoFactorAuthenticationSig.sol";
 import "./UserBase.sol";
+import "./UserEmitter.sol";
 import "./UserRegistry.sol";
 
 
@@ -115,6 +116,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
 
         if (use2FA != _enabled) {
             use2FA = _enabled;
+            UserEmitter(this).emitUser2FAChanged(contractOwner, address(this), getUserProxy(), _enabled);
         }
         return OK;
     }

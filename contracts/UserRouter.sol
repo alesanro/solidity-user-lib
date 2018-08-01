@@ -8,12 +8,13 @@ pragma solidity ^0.4.21;
 
 import "./BaseByzantiumRouter.sol";
 import "./UserBase.sol";
+import "./UserEmitter.sol";
 
 
 /// @title Provides lightweight frontend contract that uses delegatecall to pass
 /// every function call to a shared library (backend) contract. 
 /// Use UserInterface to make calls to this facade.
-contract UserRouter is BaseByzantiumRouter, UserOwned, UserBase {
+contract UserRouter is BaseByzantiumRouter, UserOwned, UserBase, UserEmitter {
 
     /// @notice UserRouter constructor
     /// @param _owner owner of created contract
