@@ -25,7 +25,7 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
         address indexed user,
         address proxy,
         address recoveryContract,
-        address owner
+        address indexed owner
     );
 
     address public userBackendProvider;
