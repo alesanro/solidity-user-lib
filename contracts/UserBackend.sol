@@ -7,7 +7,7 @@ pragma solidity ^0.4.21;
 
 
 import "solidity-shared-lib/contracts/Owned.sol";
-import "./TwoFactorAuthenticationSig.sol";
+import "./ThirdPartyAuthenticationSig.sol";
 import "./UserBase.sol";
 import "./UserEmitter.sol";
 import "./UserRegistry.sol";
@@ -16,7 +16,7 @@ import "./UserRegistry.sol";
 /// @title Utilized as a library contract that receives delegated calls from frontend contracts
 /// and provides two-factor authentication confirmation for its functions. 
 /// See UserInterface contract for centralized information about frontend contract interface.
-contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
+contract UserBackend is Owned, UserBase, ThirdPartyAuthenticationSig {
 
     uint constant OK = 1;
     uint constant MULTISIG_ADDED = 3;
@@ -39,20 +39,29 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         }
     }
 
-    modifier onlyVerified(address _initiator, bytes32 _message, uint8 _v, bytes32 _r, bytes32 _s) {
-        if ((!use2FA && msg.sender == _initiator) ||
-            msg.sender == address(this)
+    modifier onlyMultiownedWithRemoteOwners {
+        if (msg.sender == address(this)) {
+            _;
+        }
+        else if (use2FA && 
+            (msg.sender == getOwner() || isThirdPartyOwner(msg.sender))
         ) {
+            submitTransaction(address(this), msg.value, msg.data);
+            assembly {
+                mstore(0, 3) /// MULTISIG_ADDED
+                return(0, 32)
+            }
+        }
+    }
+
+    modifier onlyVerifiedWithRemoteOwners(bytes32 _message, uint8 _v, bytes32 _r, bytes32 _s) {
+        if (msg.sender == address(this)) {
             _;
         }
         else if (use2FA &&
-                msg.sender == _initiator &&
-                getOracle() == ecrecover(
-                    keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _message)), 
-                    _v, 
-                    _r, 
-                    _s
-        )) {
+                (msg.sender == getOwner() || isThirdPartyOwner(msg.sender)) &&
+                getSigner(_message, _v, _r, _s) == getOracle()
+        ) {
             _;
         }
     }
@@ -163,6 +172,26 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         return OK;
     }
 
+    function addRemoteOwner(address _owner)
+    external
+    onlyCall
+    onlyMultiowned(contractOwner)
+    returns (uint)
+    {
+        _addThirdPartyOwner(_owner);
+        return OK;
+    }
+
+    function revokeRemoteOwner(address _owner)
+    external
+    onlyCall
+    onlyMultiowned(contractOwner)
+    returns (uint)
+    {
+        _revokeThirdPartyOwner(_owner);
+        return OK;
+    }
+
     /// @notice Updates address of backend provider
     /// Should be invoked by an issuer.
     /// Should be called only through delegatecall.
@@ -244,7 +273,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         bool _throwOnFailedCall
     )
     onlyCall
-    onlyMultiowned(contractOwner)
+    onlyMultiownedWithRemoteOwners
     public
     returns (bytes32) 
     {
@@ -262,7 +291,7 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         bytes32 _s
     )
     onlyCall
-    onlyVerified(contractOwner, keccak256(abi.encodePacked(_pass, msg.sender, _destination, _data, _value)), _v, _r, _s)
+    onlyVerifiedWithRemoteOwners(getMessageForForward(msg.sender, _destination, _data, _value, _pass), _v, _r, _s)
     public
     returns (bytes32)
     {
@@ -328,6 +357,20 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         }
 
         return _result;
+    }
+
+    function getMessageForForward(
+        address _sender,
+        address _destination,
+        bytes _data,
+        uint _value,
+        bytes _pass
+    )
+    public
+    pure
+    returns (bytes32)
+    {
+        return keccak256(abi.encodePacked(_pass, _sender, _destination, _data, _value));
     }
 
     /* INTERNAL */
