@@ -35,6 +35,16 @@ contract TwoFactorAuthenticationSig is MultiSig {
         this.replaceOwner(owners[1], _oracle);
     }
 
+    /// @notice Gets owner's address that is used to confirm txs.
+    /// @return address of an owner
+    function getOwner() 
+    public 
+    view 
+    returns (address) 
+    {
+        return owners[0];
+    }
+
     /// @notice Gets oracle address that is used to confirm txs.
     /// @return address of an oracle
     function getOracle()
