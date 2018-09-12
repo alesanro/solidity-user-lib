@@ -7,7 +7,7 @@ pragma solidity ^0.4.21;
 
 
 import "solidity-shared-lib/contracts/Owned.sol";
-import "./ThirdPartyAuthenticationSig.sol";
+import "./ThirdPartyMultiSig.sol";
 import "./UserBase.sol";
 import "./UserEmitter.sol";
 import "./UserRegistry.sol";
@@ -16,7 +16,7 @@ import "./UserRegistry.sol";
 /// @title Utilized as a library contract that receives delegated calls from frontend contracts
 /// and provides two-factor authentication confirmation for its functions. 
 /// See UserInterface contract for centralized information about frontend contract interface.
-contract UserBackend is Owned, UserBase, ThirdPartyAuthenticationSig {
+contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
 
     uint constant OK = 1;
     uint constant MULTISIG_ADDED = 3;

@@ -11,7 +11,7 @@ import "./TwoFactorAuthenticationSig.sol";
 
 /// @title Intermediate contract that organizes access to 3rd party remote addresses that
 /// have equal rights for signing functions but key functionality still requires an owner.
-contract ThirdPartyAuthenticationSig is TwoFactorAuthenticationSig {
+contract ThirdPartyMultiSig is TwoFactorAuthenticationSig {
 
     function confirmTransaction(uint transactionId)
     public
@@ -31,6 +31,8 @@ contract ThirdPartyAuthenticationSig is TwoFactorAuthenticationSig {
         super.confirmTransactionWithVRS(transactionId, pass, v, r, s);
     }
 
+    /// @notice Checks if an address `_address` is one of 3rd party owners (origin owner is not included)
+    /// @param _address account address to check
     function isThirdPartyOwner(address _address) 
     public 
     view 
@@ -39,6 +41,7 @@ contract ThirdPartyAuthenticationSig is TwoFactorAuthenticationSig {
         return isOwner[_address] && !(_address == getOwner() || _address == getOracle());
     }
 
+    /// @notice Gets a list of 3rd party owners (if such exist).
     function getThirdPartyOwners()
     public
     view 
