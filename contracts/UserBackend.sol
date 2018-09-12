@@ -40,12 +40,12 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     }
 
     modifier onlyMultiownedWithRemoteOwners {
-        if (msg.sender == address(this)) {
+        if ((!use2FA && _isOneOfOwners(msg.sender)) ||
+            msg.sender == address(this)
+        ) {
             _;
         }
-        else if (use2FA && 
-            (msg.sender == getOwner() || isThirdPartyOwner(msg.sender))
-        ) {
+        else if (use2FA && _isOneOfOwners(msg.sender)) {
             submitTransaction(address(this), msg.value, msg.data);
             assembly {
                 mstore(0, 3) /// MULTISIG_ADDED
@@ -55,12 +55,14 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     }
 
     modifier onlyVerifiedWithRemoteOwners(bytes32 _message, uint8 _v, bytes32 _r, bytes32 _s) {
-        if (msg.sender == address(this)) {
+        if ((!use2FA && _isOneOfOwners(msg.sender)) ||
+            msg.sender == address(this)
+        ) {
             _;
         }
         else if (use2FA &&
-                (msg.sender == getOwner() || isThirdPartyOwner(msg.sender)) &&
-                getSigner(_message, _v, _r, _s) == getOracle()
+            _isOneOfOwners(msg.sender) &&
+            getSigner(_message, _v, _r, _s) == getOracle()
         ) {
             _;
         }
@@ -99,9 +101,9 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _enable2FA if true enables 2FA mode, false - keep it turned off
     /// @return result of an operation
     function init(address _oracle, bool _enable2FA)
+    external
     onlyCall
     onlyIssuer
-    external
     returns (uint)
     {
         _init(contractOwner, _oracle);
@@ -116,9 +118,9 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _enabled if true enables 2FA mode, false - turns it off
     /// @return result of an operation
     function set2FA(bool _enabled)
+    external
     onlyCall
     onlyMultiowned(contractOwner)
-    external
     returns (uint) 
     {
         require(getOracle() != 0x0, "Oracle must be set before 2FA activation");
@@ -137,9 +139,9 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _userProxy new user proxy contract address
     /// @return result of an operation
     function setUserProxy(UserProxy _userProxy) 
+    public 
     onlyCall
     onlyMultiowned(contractOwner)
-    public 
     returns (uint) 
     {
         userProxy = _userProxy;
@@ -163,16 +165,16 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _oracle new oracle address
     /// @return result of an operation
     function setOracle(address _oracle)
+    external
     onlyCall
     onlyMultiowned(contractOwner)
-    external
     returns (uint)
     {
         _setOracle(_oracle);
         return OK;
     }
 
-    function addRemoteOwner(address _owner)
+    function addThirdPartyOwner(address _owner)
     external
     onlyCall
     onlyMultiowned(contractOwner)
@@ -182,7 +184,7 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         return OK;
     }
 
-    function revokeRemoteOwner(address _owner)
+    function revokeThirdPartyOwner(address _owner)
     external
     onlyCall
     onlyMultiowned(contractOwner)
@@ -198,9 +200,9 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _newBackendProvider address of a new backend provider contract
     /// @return result of an operation    
     function updateBackendProvider(address _newBackendProvider)
+    external
     onlyCall
     onlyIssuer
-    external
     returns (uint) 
     {
         require(_newBackendProvider != 0x0, "Backend should not be 0x0");
@@ -216,9 +218,9 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _recoveryContract new recovery address
     /// @return result of an operation
     function setRecoveryContract(address _recoveryContract) 
+    public 
     onlyCall
     onlyMultiowned(contractOwner)
-    public 
     returns (uint) 
     {
         require(_recoveryContract != 0x0, "Recovery contract address should not be 0x0");
@@ -243,9 +245,9 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _newAddress new contract owner passed by recovery
     /// @return result of an operation
     function recoverUser(address _newAddress) 
+    public
     onlyCall
     onlyRecoveryContract
-    public
     returns (uint) 
     {
         require(_newAddress != 0x0, "Recovered user should not be 0x0");
@@ -272,9 +274,9 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         uint _value,
         bool _throwOnFailedCall
     )
+    public
     onlyCall
     onlyMultiownedWithRemoteOwners
-    public
     returns (bytes32) 
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
@@ -290,9 +292,9 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         bytes32 _r,
         bytes32 _s
     )
+    public
     onlyCall
     onlyVerifiedWithRemoteOwners(getMessageForForward(msg.sender, _destination, _data, _value, _pass), _v, _r, _s)
-    public
     returns (bytes32)
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
@@ -305,8 +307,8 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _newOwner new owner of a contract
     /// @return true if owner change is successful, false otherwise
     function transferOwnership(address _newOwner) 
-    only2FADisabled
     public 
+    only2FADisabled
     returns (bool _result) 
     {
         if (!_allowDelegateCall()) {
@@ -329,8 +331,8 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _to new owner of a contract
     /// @return true when successful, false otherwise
     function changeContractOwnership(address _to)
-    only2FADisabled
     public
+    only2FADisabled
     returns (bool)
     {
         return super.changeContractOwnership(_to);
@@ -342,8 +344,8 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// Allowed only for a contract owner.
     /// @return true when owner change is successful, false otherwise
     function claimContractOwnership()
-    only2FADisabled
     public
+    only2FADisabled
     returns (bool _result)
     {
         if (!_allowDelegateCall()) {
@@ -396,5 +398,9 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         if (address(_userRegistry) != 0x0) {
             _userRegistry.userOwnershipChanged(this, _oldContractOwner);
         }
+    }
+
+    function _isOneOfOwners(address _address) private view returns (bool) {
+        return _address == getOwner() || isThirdPartyOwner(_address);
     }
 }
