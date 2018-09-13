@@ -31,8 +31,10 @@ contract("User Workflow", accounts => {
 		user1: accounts[1],
 		user2: accounts[2],
 		user3: accounts[3],
-		oracle: accounts[7],
-		recovery: accounts[8],
+		oracle: accounts[6],
+		recovery: accounts[7],
+		remoteOwner1: accounts[8],
+		remoteOwner2: accounts[9],
 	}
 
 	const privateKeys = {
@@ -55,13 +57,15 @@ contract("User Workflow", accounts => {
 	const assertExpectations = async (expected = 0, callsCount = null) => {
 		assert.equal(
 			(await contracts.mock.expectationsLeft()).toString(16),
-			expected.toString(16)
+			expected.toString(16),
+			"Expectations left should be equal to provided one"
 		)
 
 		const expectationsCount = await contracts.mock.expectationsCount()
 		assert.equal(
 			(await contracts.mock.callsCount()).toString(16),
-			callsCount === null ? expectationsCount.toString(16) : callsCount.toString(16)
+			callsCount === null ? expectationsCount.toString(16) : callsCount.toString(16),
+			"Calls count should be equal to provided or expectations count"
 		)
 	}
 
@@ -72,7 +76,7 @@ contract("User Workflow", accounts => {
 			"Execution",
 		]
 		const events = await eventHelpers.findEvents([contracts.userBackend,], tx, e => notEmittedEvents.indexOf(e) >= 0)
-		assert.lengthOf(events, 0)
+		assert.lengthOf(events, 0, "No multisig signs should be found")
 	}
 
 	/// @return transactionId
@@ -84,21 +88,21 @@ contract("User Workflow", accounts => {
 				"Forwarded",
 			]
 			const events = await eventHelpers.findEvents([ userProxy, contracts.userBackend, ], tx, e => notEmittedEvents.indexOf(e) >= 0)
-			assert.lengthOf(events, 0)
+			assert.lengthOf(events, 0, `No multisig events ${notEmittedEvents} should be found`)
 		}
 		{
 			{
 				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Submission"))[0]
-				assert.isDefined(event)
-				assert.isDefined(event.args.transactionId)
+				assert.isDefined(event, "No 'Submission' event found")
+				assert.isDefined(event.args.transactionId, "Invalid transaction id")
 
 				transactionId = event.args.transactionId
 			}
 			{
 				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Confirmation"))[0]
-				assert.isDefined(event)
-				assert.equal(event.args.sender, user)
-				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16))
+				assert.isDefined(event, "No 'Confirmation' event found")
+				assert.equal(event.args.sender, user, "Signer is not equal to 'sender' from event")
+				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16), "Transaction id is not equal to expected from event")
 			}
 		}
 
@@ -113,19 +117,19 @@ contract("User Workflow", accounts => {
 				"Submission",
 			]
 			const events = await eventHelpers.findEvents([ userRouter, contracts.userBackend, ], tx, e => notEmittedEvents.indexOf(e) >= 0)
-			assert.lengthOf(events, 0)
+			assert.lengthOf(events, 0, `No multisig events ${notEmittedEvents} should be found`)
 		}
 		{
 			{
 				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Confirmation"))[0]
-				assert.isDefined(event)
-				assert.equal(event.args.sender, oracle)
-				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16))
+				assert.isDefined(event, "No 'Confirmation' event found")
+				assert.equal(event.args.sender, oracle, "Oracle should be a sender from event")
+				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16), "Transaction id is not equal to expected from event")
 			}
 			{
 				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Execution"))[0]
-				assert.isDefined(event)
-				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16))
+				assert.isDefined(event, "No 'Execution' event found")
+				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16), "Transaction id is not equal to expected from event")
 			}
 		}
 	}
@@ -1751,6 +1755,534 @@ contract("User Workflow", accounts => {
 							)
 							await assertExpectations(0, 2)
 							await assertNoMultisigPresence(tx)
+						})
+					})
+				})
+			})
+		})
+
+		describe.only("2FA with 3rd party owners", () => {
+			const nonOwner = users.user3
+			let snapshotId
+
+			before(async () => {
+				snapshotId = reverter.snapshotId
+			})
+
+			after(async () => {
+				await reverter.promisifyRevert(snapshotId)
+			})
+
+			context("when 2FA disabled", () => {
+
+				it("should have use2FA = false", async () => {
+					assert.isFalse(await userRouter.use2FA())
+				})
+
+				it("should show that original owner is not 3rd party owner", async () => {
+					assert.isFalse(await userRouter.isThirdPartyOwner.call(user), "Original owner should not be 3rd party owner")
+					assert.lengthOf(await userRouter.getThirdPartyOwners.call(), 0, "3rd party owners list should be empty")
+				})
+
+				after(async () => {
+					await reverter.promisifyRevert()
+				})
+
+				context("add 3rd party owners", () => {
+
+					let snapshotId
+
+					before(async () => {
+						snapshotId = reverter.snapshotId
+						await reverter.promisifySnapshot()
+					})
+
+					after(async () => {
+						await reverter.promisifyRevert(snapshotId)
+					})
+
+					it("should NOT allow by non-owner with UNAUTHORIZED code", async () => {
+						assert.equal(
+							(await userRouter.addThirdPartyOwner.call(users.remoteOwner1, { from: nonOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should allow by original owner with OK code", async () => {
+						assert.equal(
+							(await userRouter.addThirdPartyOwner.call(users.remoteOwner1, { from: user, })).toString(16),
+							ErrorScope.OK.toString(16)
+						)
+					})
+
+					it("should allow by original owner", async () => {
+						const tx = await userRouter.addThirdPartyOwner(users.remoteOwner1, { from: user, })
+						{
+							const event = (await eventHelpers.findEvent([userRouter,], tx, "OwnerAddition"))[0]
+							assert.isDefined(event, "No event was found")
+							assert.equal(event.address, userRouter.address, "Invalid event source")
+							assert.equal(event.args.owner, users.remoteOwner1, "Invalid event 'owner' address")
+						}
+					})
+
+					it("should be presented in a list", async () => {
+						assert.isFalse(await userRouter.isThirdPartyOwner.call(user), "Original owner should not be 3rd party owner")
+						assert.isTrue(await userRouter.isThirdPartyOwner.call(users.remoteOwner1), "Remote owner should become a 3rd party owner")
+						assert.include(await userRouter.getThirdPartyOwners.call(), users.remoteOwner1, "Remote owner should be included in list of 3rd party owners")
+					})
+
+					it("should NOT allow by 3rd party owner with UNAUTHORIZED code", async () => {
+						assert.equal(
+							(await userRouter.addThirdPartyOwner.call(users.remoteOwner2, { from: users.remoteOwner1, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow by 3rd party owner", async () => {
+						const tx = await userRouter.addThirdPartyOwner(users.remoteOwner2, { from: users.remoteOwner1, })
+						{
+							const event = (await eventHelpers.findEvent([userRouter,], tx, "OwnerAddition"))[0]
+							assert.isUndefined(event, "No event expected")
+						}
+
+						assert.isFalse(await userRouter.isThirdPartyOwner.call(users.remoteOwner2), "Remote owner should not become a 3rd party owner")
+					})
+				})
+
+				context("revoke 3rd party owners", () => {
+
+					let snapshotId
+
+					before(async () => {
+						snapshotId = reverter.snapshotId
+						await reverter.promisifySnapshot()
+
+						// setup
+						await userRouter.addThirdPartyOwner(users.remoteOwner1, { from: user, })
+					})
+
+					after(async () => {
+						await reverter.promisifyRevert(snapshotId)
+					})
+
+					it("should be presented in a list before revoking", async () => {
+						assert.isTrue(await userRouter.isThirdPartyOwner.call(users.remoteOwner1), "Remote owner should present as 3rd party owner")
+					})
+
+					it("should NOT allow by non-owner with UNAUTHORIZED code", async () => {
+						assert.equal(
+							(await userRouter.revokeThirdPartyOwner.call(users.remoteOwner1, { from: nonOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow by 3rd party owner with UNAUTHORIZED code", async () => {
+						assert.equal(
+							(await userRouter.revokeThirdPartyOwner.call(users.remoteOwner1, { from: users.remoteOwner1, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should allow by original owner with OK code", async () => {
+						assert.equal(
+							(await userRouter.revokeThirdPartyOwner.call(users.remoteOwner1, { from: user, })).toString(16),
+							ErrorScope.OK.toString(16)
+						)
+					})
+
+					it("should allow by original owner", async () => {
+						const tx = await userRouter.revokeThirdPartyOwner(users.remoteOwner1, { from: user, })
+						{
+							const event = (await eventHelpers.findEvent([userRouter,], tx, "OwnerRemoval"))[0]
+							assert.isDefined(event, "No event was found")
+							assert.equal(event.address, userRouter.address, "Invalid event source")
+							assert.equal(event.args.owner, users.remoteOwner1, "Invalid event 'owner' address")
+						}
+					})
+
+					it("should THROW and NOT allow unexisted 3rd party owner by original owner", async () => {
+						await userRouter.revokeThirdPartyOwner(users.remoteOwner1, { from: user, }).then(assert.fail, () => true)
+					})
+
+					it("should NOT be presented in a list", async () => {
+						assert.isFalse(await userRouter.isThirdPartyOwner.call(user), "Original owner should not be 3rd party owner")
+						assert.isFalse(await userRouter.isThirdPartyOwner.call(users.remoteOwner1), "Revoked remote owner should not be a 3rd party owner anymore")
+						assert.notInclude(await userRouter.getThirdPartyOwners.call(), users.remoteOwner1, "Revoked remote owner should not be included in list of 3rd party owners")
+					})
+				})
+
+				context("operations", () => {
+
+					const remoteOwner = users.remoteOwner1
+					let data
+
+					let snapshotId
+
+					before(async () => {
+						snapshotId = reverter.snapshotId
+						await reverter.promisifySnapshot()
+
+						// setup
+						data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+
+						await userRouter.addThirdPartyOwner(remoteOwner, { from: user, })
+					})
+
+					after(async () => {
+						await reverter.promisifyRevert(snapshotId)
+					})
+
+
+					it("should NOT allow to update recovery contract", async () => {
+						const newRecoveryAddress = "0xffffffffffffffffffffffffffffffffffffffff"
+						assert.equal(
+							(await userRouter.setRecoveryContract.call(newRecoveryAddress, { from: remoteOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow to change contract ownership", async () => {
+						assert.isFalse(await Owned.at(userRouter.address).transferOwnership.call(users.user2, { from: remoteOwner, }))
+					})
+
+					it("should NOT allow to update user proxy address", async () => {
+						const newUserProxyAddress = "0xffffffffffffffffffffffffffffffffffffffff"
+						assert.equal(
+							(await userRouter.setUserProxy.call(newUserProxyAddress, { from: remoteOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow to update oracle address", async () => {
+						const newOracleAddress = "0xffffffffffffffffffffffffffffffffffffffff"
+						assert.equal(
+							(await userRouter.setOracle.call(newOracleAddress, { from: remoteOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow to update 2FA (from 'false' to 'true')", async () => {
+						assert.equal(
+							(await userRouter.set2FA.call(true, { from: remoteOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should allow to 'forward'", async () => {
+						await contracts.mock.expect(
+							userProxy.address,
+							0,
+							data,
+							await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+						)
+
+						const tx = await userRouter.forward(contracts.mock.address, data, 0, true, { from: remoteOwner, }).then(r => r, assert.fail)
+						await assertNoMultisigPresence(tx)
+					})
+
+					it("should allow to 'forwardWithVRS'", async () => {
+						const pass = "0x1234"
+
+						await contracts.mock.expect(
+							userProxy.address,
+							0,
+							data,
+							await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+						)
+
+						const tx = await userRouter.forwardWithVRS(
+							contracts.mock.address,
+							data,
+							0,
+							true,
+							pass,
+							0,
+							"",
+							"",
+							{ from: remoteOwner, }
+						)
+						await assertExpectations()
+						await assertNoMultisigPresence(tx)
+					})
+				})
+			})
+
+			context("when 2FA enabled", () => {
+
+				let snapshotId
+
+				before(async () => {
+					await userRouter.set2FA(true, { from: user, })
+
+					snapshotId = reverter.snapshotId
+					await reverter.promisifySnapshot()
+				})
+
+				after(async () => {
+					await reverter.promisifyRevert(snapshotId)
+				})
+
+				it("should have use2FA = true", async () => {
+					assert.isTrue(await userRouter.use2FA())
+				})
+
+				it("should show that original owner is not 3rd party owner", async () => {
+					assert.isFalse(await userRouter.isThirdPartyOwner.call(user), "Original owner should not be 3rd party owner")
+					assert.lengthOf(await userRouter.getThirdPartyOwners.call(), 0, "3rd party owners list should be empty")
+				})
+
+				context("add 3rd party owners", () => {
+					let snapshotId
+
+					before(async () => {
+						snapshotId = reverter.snapshotId
+						await reverter.promisifySnapshot()
+					})
+
+					after(async () => {
+						await reverter.promisifyRevert(snapshotId)
+					})
+
+					it("should NOT allow by non-owner with UNAUTHORIZED code", async () => {
+						assert.equal(
+							(await userRouter.addThirdPartyOwner.call(users.remoteOwner1, { from: nonOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should allow by original owner with MULTISIG_ADDED code", async () => {
+						assert.equal(
+							(await userRouter.addThirdPartyOwner.call(users.remoteOwner1, { from: user, })).toString(16),
+							ErrorScope.MULTISIG_ADDED.toString(16)
+						)
+					})
+
+					it("should allow by original owner", async () => {
+						const tx = await userRouter.addThirdPartyOwner(users.remoteOwner1, { from: user, })
+						const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+
+						// confirmation
+						{
+							const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
+							await assertMultisigExecutionPresence({
+								tx, transactionId, userRouter, oracle: users.oracle,
+							})
+						}
+					})
+
+					it("should be presented in a list", async () => {
+						assert.isFalse(await userRouter.isThirdPartyOwner.call(user), "Original owner should not be 3rd party owner")
+						assert.isTrue(await userRouter.isThirdPartyOwner.call(users.remoteOwner1), "Remote owner should become a 3rd party owner")
+						assert.include(await userRouter.getThirdPartyOwners.call(), users.remoteOwner1, "Remote owner should be included in list of 3rd party owners")
+					})
+
+					it("should NOT allow by 3rd party owner with UNAUTHORIZED code", async () => {
+						assert.equal(
+							(await userRouter.addThirdPartyOwner.call(users.remoteOwner2, { from: users.remoteOwner1, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow by 3rd party owner", async () => {
+						const tx = await userRouter.addThirdPartyOwner(users.remoteOwner2, { from: users.remoteOwner1, })
+						await assertNoMultisigPresence(tx)
+
+						assert.isFalse(await userRouter.isThirdPartyOwner.call(users.remoteOwner2), "Remote owner should not become a 3rd party owner")
+					})
+				})
+
+				context("revoke 3rd party owners", () => {
+					let snapshotId
+
+					before(async () => {
+						snapshotId = reverter.snapshotId
+						await reverter.promisifySnapshot()
+
+						// setup
+						{
+							const tx = await userRouter.addThirdPartyOwner(users.remoteOwner1, { from: user, })
+							const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+							await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
+						}
+					})
+
+					after(async () => {
+						await reverter.promisifyRevert(snapshotId)
+					})
+
+					it("should be presented in a list before revoking", async () => {
+						assert.isTrue(await userRouter.isThirdPartyOwner.call(users.remoteOwner1), "Remote owner should present as 3rd party owner")
+					})
+
+					it("should NOT allow by non-owner with UNAUTHORIZED code", async () => {
+						assert.equal(
+							(await userRouter.revokeThirdPartyOwner.call(users.remoteOwner1, { from: nonOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow by 3rd party owner with UNAUTHORIZED code", async () => {
+						assert.equal(
+							(await userRouter.revokeThirdPartyOwner.call(users.remoteOwner1, { from: users.remoteOwner1, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should allow by original owner with OK code", async () => {
+						assert.equal(
+							(await userRouter.revokeThirdPartyOwner.call(users.remoteOwner1, { from: user, })).toString(16),
+							ErrorScope.MULTISIG_ADDED.toString(16)
+						)
+					})
+
+					it("should allow by original owner", async () => {
+						const tx = await userRouter.revokeThirdPartyOwner(users.remoteOwner1, { from: user, })
+						const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+
+						// confirmation
+						{
+							const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
+							await assertMultisigExecutionPresence({
+								tx, transactionId, userRouter, oracle: users.oracle,
+							})
+						}
+					})
+
+					it("should NOT allow unexisted 3rd party owner by original owner with 'ExecutionFailure' event emitted", async () => {
+						const tx = await userRouter.revokeThirdPartyOwner(users.remoteOwner1, { from: user, })
+						const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+
+						// confirmation
+						const confirmationTx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
+						{
+							const event = (await eventHelpers.findEvent([userRouter,], confirmationTx, "ExecutionFailure"))[0]
+							assert.isDefined(event, "Event 'ExecutionFailure' should be emitted")
+							assert.equal(event.address, userRouter.address, "Event source should be user router")
+							assert.equal(event.args.transactionId, transactionId, "Failed transaction should be equal to confirmed transaction from event")
+						}
+					})
+
+					it("should NOT be presented in a list", async () => {
+						assert.isFalse(await userRouter.isThirdPartyOwner.call(user), "Original owner should not be 3rd party owner")
+						assert.isFalse(await userRouter.isThirdPartyOwner.call(users.remoteOwner1), "Revoked remote owner should not be a 3rd party owner anymore")
+						assert.notInclude(await userRouter.getThirdPartyOwners.call(), users.remoteOwner1, "Revoked remote owner should not be included in list of 3rd party owners")
+					})
+				})
+
+				context.only("operations", () => {
+
+					const remoteOwner = users.remoteOwner1
+
+					let snapshotId
+
+					before(async () => {
+						snapshotId = reverter.snapshotId
+						await reverter.promisifySnapshot()
+
+						// setup
+						{
+							const tx = await userRouter.addThirdPartyOwner(remoteOwner, { from: user, })
+							const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+							await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
+						}
+					})
+
+					after(async () => {
+						await reverter.promisifyRevert(snapshotId)
+					})
+
+
+					it("should NOT allow to update recovery contract", async () => {
+						const newRecoveryAddress = "0xffffffffffffffffffffffffffffffffffffffff"
+						assert.equal(
+							(await userRouter.setRecoveryContract.call(newRecoveryAddress, { from: remoteOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow to update user proxy address", async () => {
+						const newUserProxyAddress = "0xffffffffffffffffffffffffffffffffffffffff"
+						assert.equal(
+							(await userRouter.setUserProxy.call(newUserProxyAddress, { from: remoteOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow to update oracle address", async () => {
+						const newOracleAddress = "0xffffffffffffffffffffffffffffffffffffffff"
+						assert.equal(
+							(await userRouter.setOracle.call(newOracleAddress, { from: remoteOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					it("should NOT allow to update 2FA (from 'false' to 'true')", async () => {
+						assert.equal(
+							(await userRouter.set2FA.call(true, { from: remoteOwner, })).toString(16),
+							ErrorScope.UNAUTHORIZED.toString(16)
+						)
+					})
+
+					context("forward", () => {
+						let data
+
+						before(async () => {
+							data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+						})
+
+						it("single", async () => {
+							await contracts.mock.expect(
+								userProxy.address,
+								0,
+								data,
+								await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+							)
+
+							const tx = await userRouter.forward(contracts.mock.address, data, 0, true, { from: remoteOwner, }).then(r => r, assert.fail)
+							await assertExpectations(1, 0)
+
+							const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user: remoteOwner, })
+							const confirmationTx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, }).then(r => r, assert.fail)
+							await assertExpectations(0, 1)
+							await assertMultisigExecutionPresence({
+								tx: confirmationTx, transactionId, userRouter, oracle: users.oracle,
+							})
+						})
+
+						describe("with V, R, S", () => {
+							const pass = "0x1234"
+							let message
+							let signatureDetails
+
+							before(async () => {
+								message = getMessageFrom({
+									pass, sender: remoteOwner, destination: contracts.mock.address, data, value: 0,
+								})
+								signatureDetails = signMessage({ message, oracle: users.oracle, })
+							})
+
+							it("should allow to forward invocation", async () => {
+								await contracts.mock.expect(
+									userProxy.address,
+									0,
+									data,
+									await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
+								)
+
+								const tx = await userRouter.forwardWithVRS(
+									contracts.mock.address,
+									data,
+									0,
+									true,
+									pass,
+									signatureDetails.v,
+									signatureDetails.r,
+									signatureDetails.s,
+									{ from: remoteOwner, }
+								)
+								await assertExpectations(1, 1)
+								await assertNoMultisigPresence(tx)
+							})
 						})
 					})
 				})
