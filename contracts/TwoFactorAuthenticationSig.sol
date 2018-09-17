@@ -15,10 +15,12 @@ import "./MultiSig.sol";
 /// as the second owner (at index 1).
 contract TwoFactorAuthenticationSig is MultiSig {
 
+    uint constant TWO_FACTOR_RESERVED_OWNERS_LENGTH = 2;
+
     function _init(address _initiator, address _oracle)
     internal
     {
-        uint _required = 2;
+        uint _required = TWO_FACTOR_RESERVED_OWNERS_LENGTH;
         address[] memory _owners = new address[](_required);
         _owners[0] = _initiator;
         _owners[1] = _oracle;
@@ -31,6 +33,16 @@ contract TwoFactorAuthenticationSig is MultiSig {
         require(_oracle != 0x0, "Oracle should not be equal to 0x0");
         
         this.replaceOwner(owners[1], _oracle);
+    }
+
+    /// @notice Gets owner's address that is used to confirm txs.
+    /// @return address of an owner
+    function getOwner() 
+    public 
+    view 
+    returns (address) 
+    {
+        return owners[0];
     }
 
     /// @notice Gets oracle address that is used to confirm txs.

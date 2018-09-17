@@ -7,7 +7,7 @@ pragma solidity ^0.4.21;
 
 
 import "solidity-shared-lib/contracts/Owned.sol";
-import "./TwoFactorAuthenticationSig.sol";
+import "./ThirdPartyMultiSig.sol";
 import "./UserBase.sol";
 import "./UserEmitter.sol";
 import "./UserRegistry.sol";
@@ -16,7 +16,7 @@ import "./UserRegistry.sol";
 /// @title Utilized as a library contract that receives delegated calls from frontend contracts
 /// and provides two-factor authentication confirmation for its functions. 
 /// See UserInterface contract for centralized information about frontend contract interface.
-contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
+contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
 
     uint constant OK = 1;
     uint constant MULTISIG_ADDED = 3;
@@ -39,20 +39,31 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         }
     }
 
-    modifier onlyVerified(address _initiator, bytes32 _message, uint8 _v, bytes32 _r, bytes32 _s) {
-        if ((!use2FA && msg.sender == _initiator) ||
+    modifier onlyMultiownedWithRemoteOwners {
+        if ((!use2FA && _isOneOfOwners(msg.sender)) ||
+            msg.sender == address(this)
+        ) {
+            _;
+        }
+        else if (use2FA && _isOneOfOwners(msg.sender)) {
+            submitTransaction(address(this), msg.value, msg.data);
+            assembly {
+                mstore(0, 3) /// MULTISIG_ADDED
+                return(0, 32)
+            }
+        }
+    }
+
+    modifier onlyVerifiedWithRemoteOwners(bytes32 _message, uint8 _v, bytes32 _r, bytes32 _s) {
+        if ((!use2FA && _isOneOfOwners(msg.sender)) ||
             msg.sender == address(this)
         ) {
             _;
         }
         else if (use2FA &&
-                msg.sender == _initiator &&
-                getOracle() == ecrecover(
-                    keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _message)), 
-                    _v, 
-                    _r, 
-                    _s
-        )) {
+            _isOneOfOwners(msg.sender) &&
+            getSigner(_message, _v, _r, _s) == getOracle()
+        ) {
             _;
         }
     }
@@ -90,9 +101,9 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// @param _enable2FA if true enables 2FA mode, false - keep it turned off
     /// @return result of an operation
     function init(address _oracle, bool _enable2FA)
+    external
     onlyCall
     onlyIssuer
-    external
     returns (uint)
     {
         _init(contractOwner, _oracle);
@@ -107,9 +118,9 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// @param _enabled if true enables 2FA mode, false - turns it off
     /// @return result of an operation
     function set2FA(bool _enabled)
+    external
     onlyCall
     onlyMultiowned(contractOwner)
-    external
     returns (uint) 
     {
         require(getOracle() != 0x0, "Oracle must be set before 2FA activation");
@@ -128,9 +139,9 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// @param _userProxy new user proxy contract address
     /// @return result of an operation
     function setUserProxy(UserProxy _userProxy) 
+    public 
     onlyCall
     onlyMultiowned(contractOwner)
-    public 
     returns (uint) 
     {
         userProxy = _userProxy;
@@ -154,12 +165,32 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// @param _oracle new oracle address
     /// @return result of an operation
     function setOracle(address _oracle)
+    external
     onlyCall
     onlyMultiowned(contractOwner)
-    external
     returns (uint)
     {
         _setOracle(_oracle);
+        return OK;
+    }
+
+    function addThirdPartyOwner(address _owner)
+    external
+    onlyCall
+    onlyMultiowned(contractOwner)
+    returns (uint)
+    {
+        _addThirdPartyOwner(_owner);
+        return OK;
+    }
+
+    function revokeThirdPartyOwner(address _owner)
+    external
+    onlyCall
+    onlyMultiowned(contractOwner)
+    returns (uint)
+    {
+        _revokeThirdPartyOwner(_owner);
         return OK;
     }
 
@@ -169,9 +200,9 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// @param _newBackendProvider address of a new backend provider contract
     /// @return result of an operation    
     function updateBackendProvider(address _newBackendProvider)
+    external
     onlyCall
     onlyIssuer
-    external
     returns (uint) 
     {
         require(_newBackendProvider != 0x0, "Backend should not be 0x0");
@@ -187,9 +218,9 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// @param _recoveryContract new recovery address
     /// @return result of an operation
     function setRecoveryContract(address _recoveryContract) 
+    public 
     onlyCall
     onlyMultiowned(contractOwner)
-    public 
     returns (uint) 
     {
         require(_recoveryContract != 0x0, "Recovery contract address should not be 0x0");
@@ -214,9 +245,9 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// @param _newAddress new contract owner passed by recovery
     /// @return result of an operation
     function recoverUser(address _newAddress) 
+    public
     onlyCall
     onlyRecoveryContract
-    public
     returns (uint) 
     {
         require(_newAddress != 0x0, "Recovered user should not be 0x0");
@@ -243,9 +274,9 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         uint _value,
         bool _throwOnFailedCall
     )
-    onlyCall
-    onlyMultiowned(contractOwner)
     public
+    onlyCall
+    onlyMultiownedWithRemoteOwners
     returns (bytes32) 
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
@@ -261,9 +292,9 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         bytes32 _r,
         bytes32 _s
     )
-    onlyCall
-    onlyVerified(contractOwner, keccak256(abi.encodePacked(_pass, msg.sender, _destination, _data, _value)), _v, _r, _s)
     public
+    onlyCall
+    onlyVerifiedWithRemoteOwners(getMessageForForward(msg.sender, _destination, _data, _value, _pass), _v, _r, _s)
     returns (bytes32)
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
@@ -276,8 +307,8 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// @param _newOwner new owner of a contract
     /// @return true if owner change is successful, false otherwise
     function transferOwnership(address _newOwner) 
-    only2FADisabled
     public 
+    only2FADisabled
     returns (bool _result) 
     {
         if (!_allowDelegateCall()) {
@@ -300,8 +331,8 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// @param _to new owner of a contract
     /// @return true when successful, false otherwise
     function changeContractOwnership(address _to)
-    only2FADisabled
     public
+    only2FADisabled
     returns (bool)
     {
         return super.changeContractOwnership(_to);
@@ -313,8 +344,8 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
     /// Allowed only for a contract owner.
     /// @return true when owner change is successful, false otherwise
     function claimContractOwnership()
-    only2FADisabled
     public
+    only2FADisabled
     returns (bool _result)
     {
         if (!_allowDelegateCall()) {
@@ -328,6 +359,20 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         }
 
         return _result;
+    }
+
+    function getMessageForForward(
+        address _sender,
+        address _destination,
+        bytes _data,
+        uint _value,
+        bytes _pass
+    )
+    public
+    pure
+    returns (bytes32)
+    {
+        return keccak256(abi.encodePacked(_pass, _sender, _destination, _data, _value));
     }
 
     /* INTERNAL */
@@ -353,5 +398,9 @@ contract UserBackend is Owned, UserBase, TwoFactorAuthenticationSig {
         if (address(_userRegistry) != 0x0) {
             _userRegistry.userOwnershipChanged(this, _oldContractOwner);
         }
+    }
+
+    function _isOneOfOwners(address _address) private view returns (bool) {
+        return _address == getOwner() || isThirdPartyOwner(_address);
     }
 }
