@@ -11,17 +11,31 @@ import "./ThirdPartyMultiSig.sol";
 import "./UserBase.sol";
 import "./UserEmitter.sol";
 import "./UserRegistry.sol";
+import "./Cashback.sol";
 
 
 /// @title Utilized as a library contract that receives delegated calls from frontend contracts
 /// and provides two-factor authentication confirmation for its functions. 
 /// See UserInterface contract for centralized information about frontend contract interface.
-contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
+contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
+
+    event ReceivedEther(address sender, uint value);
 
     uint constant OK = 1;
     uint constant MULTISIG_ADDED = 3;
 
+    /// @dev Cashback gas estimations about methods that cannot be measured from inside of the contract.
+    /// @dev gas without one callcodecopy estimation taken by BaseByzantiumRouter
+    uint constant ROUTER_DELEGATECALL_ESTIMATION = 1153;
+    /// @dev gas taken before startCashbackEstimation() modifier
+    uint constant CASHBACK_BEFORE_ESTIMATION = 483; 
+    /// @dev gas taken by _transferCashback modifier
+    uint constant CASHBACK_TRANSFER_ESTIMATION = 10421;
+
     bytes32 public version = "1.1.0";
+
+    /// @dev TODO:
+    bool private useCashback = false;
 
     /// @dev Guards and organizes 2FA access when it's turned on.
     modifier onlyMultiowned(address _initiator) {
@@ -92,6 +106,40 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     modifier onlyCall {
         require(_allowDelegateCall(), "Only delegatecall is allowed");
         _;
+    }
+
+    modifier onlyContractContext {
+        require(_isContractContext(), "USER_INVALID_INVOCATION_CONTEXT");
+        _;
+    }
+
+
+    /// @notice Gets flag either cashback functionality turned on or off
+    /// @return user registry contract address
+    function isUsingCashback()
+    public
+    view
+    returns (bool)
+    {
+        if (_isContractContext()) {
+            return useCashback;
+        }
+
+        return UserBackend(backendProvider.getUserBackend()).isUsingCashback();
+    }
+
+    /// @notice Sets cashback functionality in active or inactive state only for UserBackend (as a library).
+    /// Allowed only for authorized roles.
+    /// @param _useCashback flag of cashback functionality; true if the functionality should be active, false otherwise
+    /// @return result of an operation
+    function setUseCashback(bool _useCashback)
+    external
+    onlyContractOwner
+    onlyContractContext
+    returns (uint)
+    {
+        useCashback = _useCashback;
+        return OK;
     }
 
     /// @notice Initializes frontend contract with oracle and 2FA flag.
@@ -275,8 +323,24 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         bool _throwOnFailedCall
     )
     public
+    returns (bytes32) 
+    {
+        uint[1] memory _estimations;
+        return _forward(_destination, _data, _value, _throwOnFailedCall, _estimations);
+    }
+
+    function _forward(
+        address _destination,
+        bytes _data,
+        uint _value,
+        bool _throwOnFailedCall,
+        uint[1] memory _estimations
+    )
+    private
+    startCashbackEstimation(_estimations)
     onlyCall
     onlyMultiownedWithRemoteOwners
+    finishEstimationAndPayCashback(_estimations, _getBeforeForwardGasEstimation())
     returns (bytes32) 
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
@@ -375,11 +439,41 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         return keccak256(abi.encodePacked(_pass, _sender, _destination, _data, _value));
     }
 
+    /* CASHBACK */
+
+    function _shouldPayCashback() internal view returns (bool) {
+        return isUsingCashback() && msg.sender == getOracle();
+    }
+
+    function _getBeforeForwardGasEstimation() private pure returns (uint) {
+        /*
+        Have '2 * _estimateCalldatacopyGas()' because we have 1 indirect call (from user to router fallback) 
+        and 1 direct (from router fallback to delegated backend)
+        */
+        return ROUTER_DELEGATECALL_ESTIMATION + CASHBACK_BEFORE_ESTIMATION + 2 * _estimateCalldatacopyGas();
+    }
+
+    /// @dev Highly depends on _transferCashback function implementation and all subsequent calls. Any changes in this
+    ///     function should be depicted in updating _getTransferCashbackEstimation value.
+    function _getTransferCashbackEstimation() internal pure returns (uint) {
+        return CASHBACK_TRANSFER_ESTIMATION;
+    }
+
+    /// @notice Transfers caclulated cashback directly to a caller
+    function _transferCashback(uint _cashbackValue) internal {
+        userProxy.transferEther(msg.sender, _cashbackValue);
+    }
+
     /* INTERNAL */
+
+    function _isContractContext() private view returns (bool) {
+        // backend provider will be always 0x0 in the context of UserBackend
+        return address(backendProvider) != 0x0;
+    }
 
     function _allowDelegateCall() private view returns (bool) {
         // make sure this is used by delegatecall
-        if (address(backendProvider) == 0x0) {
+        if (!_isContractContext()) {
             return false;
         }
 
