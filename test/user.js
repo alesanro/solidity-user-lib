@@ -40,7 +40,7 @@ contract("User Workflow", accounts => {
 	const privateKeys = {
 		[users.user1]: "0x2ed950bc0ff7fc1f62aa3b302437de9763d81dcde4ce58291756f84748d98ce9",
 		[users.user2]: "0xdaeb307eb13b4717d01d9f175ea3ed94374da8fefa52082379d2955579ce628a",
-		[users.oracle]: "0x1e3816bb73ad4a70ea3e7606f930e2d2d492ab9d5c26776656191b1be2ae0204",
+		[users.oracle]: "0x46e5df8a291ff9112503a1007b0288f44132e4542397b4ca6415094393ef7cb9",
 	}
 
 	const contracts = {
@@ -893,6 +893,7 @@ contract("User Workflow", accounts => {
 
 			afterEach(async () => {
 				await contracts.mock.skipExpectations()
+				await contracts.mock.resetCallsCount()
 			})
 
 			it("and user router should have a proxy", async () => {
@@ -928,7 +929,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await userRouter.forward(contracts.mock.address, data, 0, true, { from: user, }).then(() => true, assert.fail)
-				await assertExpectations(1)
+				await assertExpectations(1, 1)
 			})
 
 			it("and forward should go through a new proxy", async () => {
@@ -941,7 +942,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await userRouter.forward(contracts.mock.address, data, 0, true, { from: user, }).then(() => true, assert.fail)
-				await assertExpectations()
+				await assertExpectations(0, 1)
 			})
 		})
 
@@ -1522,6 +1523,11 @@ contract("User Workflow", accounts => {
 
 				describe("with disabled 2FA", () => {
 
+					afterEach(async () => {
+						await contracts.mock.skipExpectations()
+						await contracts.mock.resetCallsCount()
+					})
+
 					it("should have use2FA = false", async () => {
 						assert.isFalse(await userRouter.use2FA())
 					})
@@ -1545,7 +1551,7 @@ contract("User Workflow", accounts => {
 							"",
 							{ from: user, }
 						)
-						await assertExpectations()
+						await assertExpectations(0, 1)
 						await assertNoMultisigPresence(tx)
 					})
 				})
@@ -1554,6 +1560,11 @@ contract("User Workflow", accounts => {
 
 					before(async () => {
 						await userRouter.set2FA(true, { from: user, })
+					})
+
+					afterEach(async () => {
+						await contracts.mock.skipExpectations()
+						await contracts.mock.resetCallsCount()
 					})
 
 					it("should have use2FA = true", async () => {
@@ -1579,9 +1590,8 @@ contract("User Workflow", accounts => {
 							"",
 							{ from: user, }
 						)
-						await assertExpectations(1, 1)
+						await assertExpectations(1, 0)
 						await assertNoMultisigPresence(tx)
-						await contracts.mock.skipExpectations()
 					})
 
 					describe("signed by invalid oracle", () => {
@@ -1592,6 +1602,11 @@ contract("User Workflow", accounts => {
 								pass, sender: user, destination: contracts.mock.address, data, value: 0,
 							})
 							signatureDetails = signMessage({ message, oracle: notOracle, })
+						})
+
+						afterEach(async () => {
+							await contracts.mock.skipExpectations()
+							await contracts.mock.resetCallsCount()
 						})
 
 						it("should NOT allow to forward invocation", async () => {
@@ -1613,9 +1628,8 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: user, }
 							)
-							await assertExpectations(1, 1)
+							await assertExpectations(1, 0)
 							await assertNoMultisigPresence(tx)
-							await contracts.mock.skipExpectations()
 						})
 					})
 
@@ -1627,6 +1641,11 @@ contract("User Workflow", accounts => {
 								pass, sender: user, destination: contracts.mock.address, data, value: 0,
 							})
 							signatureDetails = signMessage({ message, oracle: users.oracle, })
+						})
+
+						afterEach(async () => {
+							await contracts.mock.skipExpectations()
+							await contracts.mock.resetCallsCount()
 						})
 
 						it("should NOT allow to forward invocation", async () => {
@@ -1648,9 +1667,8 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: notUser, }
 							)
-							await assertExpectations(1, 1)
+							await assertExpectations(1, 0)
 							await assertNoMultisigPresence(tx)
-							await contracts.mock.skipExpectations()
 						})
 					})
 
@@ -1663,6 +1681,11 @@ contract("User Workflow", accounts => {
 								pass, sender: user, destination: contracts.mock.address, data, value: 0,
 							})
 							signatureDetails = signMessage({ message, oracle: users.oracle, })
+						})
+
+						afterEach(async () => {
+							await contracts.mock.skipExpectations()
+							await contracts.mock.resetCallsCount()
 						})
 
 						it("should NOT allow to forward invocation", async () => {
@@ -1684,9 +1707,8 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: user, }
 							)
-							await assertExpectations(1, 1)
+							await assertExpectations(1, 0)
 							await assertNoMultisigPresence(tx)
-							await contracts.mock.skipExpectations()
 						})
 					})
 
@@ -1698,6 +1720,11 @@ contract("User Workflow", accounts => {
 								pass, sender: user, destination: contracts.mock.address, data, value: 0,
 							})
 							signatureDetails = signMessage({ message, oracle: users.oracle, })
+						})
+
+						afterEach(async () => {
+							await contracts.mock.skipExpectations()
+							await contracts.mock.resetCallsCount()
 						})
 
 						it("should NOT allow to forward invocation", async () => {
@@ -1719,19 +1746,25 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: user, }
 							)
-							await assertExpectations(1, 1)
+							await assertExpectations(1, 0)
 							await assertNoMultisigPresence(tx)
-							await contracts.mock.skipExpectations()
 						})
 					})
 
 					describe("signed correctly", () => {
+						let destination
 
 						before(async () => {
+							destination = contracts.mock.address
 							message = getMessageFrom({
-								pass, sender: user, destination: contracts.mock.address, data, value: 0,
+								pass, sender: user, destination: destination, data, value: 0,
 							})
 							signatureDetails = signMessage({ message, oracle: users.oracle, })
+						})
+
+						afterEach(async () => {
+							await contracts.mock.skipExpectations()
+							await contracts.mock.resetCallsCount()
 						})
 
 						it("should allow to forward invocation", async () => {
@@ -1741,9 +1774,9 @@ contract("User Workflow", accounts => {
 								data,
 								await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
 							)
-
+							
 							const tx = await userRouter.forwardWithVRS(
-								contracts.mock.address,
+								destination,
 								data,
 								0,
 								true,
@@ -1753,7 +1786,7 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: user, }
 							)
-							await assertExpectations(0, 2)
+							await assertExpectations(0, 1)
 							await assertNoMultisigPresence(tx)
 						})
 					})
@@ -1761,7 +1794,7 @@ contract("User Workflow", accounts => {
 			})
 		})
 
-		describe.only("2FA with 3rd party owners", () => {
+		describe("2FA with 3rd party owners", () => {
 			const nonOwner = users.user3
 			let snapshotId
 
@@ -2169,7 +2202,7 @@ contract("User Workflow", accounts => {
 					})
 				})
 
-				context.only("operations", () => {
+				context("operations", () => {
 
 					const remoteOwner = users.remoteOwner1
 
@@ -2230,6 +2263,11 @@ contract("User Workflow", accounts => {
 							data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
 						})
 
+						afterEach(async () => {
+							await contracts.mock.skipExpectations()
+							await contracts.mock.resetCallsCount()
+						})
+
 						it("single", async () => {
 							await contracts.mock.expect(
 								userProxy.address,
@@ -2280,7 +2318,7 @@ contract("User Workflow", accounts => {
 									signatureDetails.s,
 									{ from: remoteOwner, }
 								)
-								await assertExpectations(1, 1)
+								await assertExpectations(0, 1)
 								await assertNoMultisigPresence(tx)
 							})
 						})
