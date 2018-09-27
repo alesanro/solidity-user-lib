@@ -14,6 +14,10 @@
     "lint": "npm run lint:sol && npm run lint:js",
     "coverage": "./node_modules/.bin/solidity-coverage"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-user-lib.git"
+  },
   "babel": {
     "presets": [
       [
@@ -37,10 +41,10 @@
     "solidity"
   ],
   "dependencies": {
-    "solidity-shared-lib": "chronobank/solidity-shared-lib#v0.2.2",
-    "solidity-eventshistory-lib": "chronobank/solidity-eventshistory-lib#v0.1.1",
-    "solidity-storage-lib": "chronobank/solidity-storage-lib#v0.2.0",
-    "solidity-roles-lib": "chronobank/solidity-roles-lib#v0.1.0"
+    "solidity-shared-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-shared-lib.git#v0.2.3",
+    "solidity-eventshistory-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-eventshistory-lib.git#v0.1.2",
+    "solidity-storage-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-storage-lib.git#v0.2.1",
+    "solidity-roles-lib": "git+ssh://git@gitlab.chronobank.io:SmartContracts/solidity-roles-lib.git#v0.1.1"
   },
   "devDependencies": {
     "ganache-cli": "6.1.4",
@@ -58,6 +62,10 @@
     "solidity-coverage": "^0.5.4",
     "standard-version": "^4.0.0"
   },
+  "bugs": {
+    "url": "https://gitlab.chronobank.io/SmartContracts/solidity-user-lib/issues"
+  },
+  "homepage": "https://gitlab.chronobank.io/SmartContracts/solidity-user-lib",
   "author": "LaborX PTY",
   "license": "AGPL-3.0"
 }
