@@ -26,14 +26,14 @@ contract Cashback {
         _;
     }
     
-    modifier finishEstimationAndPayCashback(uint[1] memory _estimations, uint _beforeStartCashbackGasEstimation) {
+    modifier finishEstimationAndPayCashback(uint[1] memory _estimations, uint _calldataPrefixLength, uint _beforeStartCashbackGasEstimation) {
         _;
         
         if (!_shouldPayCashback()) {
             return;
         }
 
-        uint _constantGas = _getConstantGas();
+        uint _constantGas = _getConstantGas(_calldataPrefixLength);
         uint _gasAfterwards = gasleft();
         uint _totalGasSpent = _constantGas + _beforeStartCashbackGasEstimation + (_estimations[0] - _gasAfterwards);
         uint _debt = _totalGasSpent * tx.gasprice;
@@ -50,8 +50,9 @@ contract Cashback {
          // G_MEMORY used here as memory expansion coefficient; must be quadratic after 724B memory
         _result = G_VERYLOW + G_COPY * G_MEMORY * _calldatasize / BYTES_WORD_SIZE;
     }
-    
-    function _estimateTxInputDataGas() private pure returns (uint _result) {
+
+
+    function _estimateTxInputDataGas(uint _calldataPrefixLength) private pure returns (uint _result) {
         uint _calldatasize;
         assembly {
             _calldatasize := calldatasize
@@ -64,15 +65,15 @@ contract Cashback {
         That takes less gas than calculating number of zero and non-zero bytes by smart
         contract itself or using approximate ratio between zero and non-zero
         number of bytes.
+
+        According to experiments and getting data that depends only on input data we have the next:
+        WolframAlpha http://www.wolframalpha.com/input/?i=linear++%7B%7B640,+9909%7D,+%7B772,+10898%7D,+%7B1156,+13868%7D,+%7B548,+9167%7D,+%7B292,+7188%7D,+%7B132,+5969%7D,+%7B228,+6694%7D,+%7B68,+5475%7D%7D
         */
-        _result = _calldatasize * TX_INPUT_NONZERO_BYTES_PRICE;
-        // uint _nonZeroBytesNumber = (5 * _calldatasize / 10);
-        // uint _zeroBytesNumber = _calldatasize - _nonZeroBytesNumber;
-        // _result = _nonZeroBytesNumber * TX_INPUT_NONZERO_BYTES_PRICE + _zeroBytesNumber * TX_INPUT_ZERO_BYTES_PRICE;
+        _result = (772 * (_calldatasize - _calldataPrefixLength)) / 100 + 4944;
     }
     
-    function _getConstantGas() private pure returns (uint) {
-        return TX_DEFAULT_PRICE + _estimateTxInputDataGas() + ESTIMATION_CALCULATION_GAS + _getTransferCashbackEstimation();
+    function _getConstantGas(uint _calldataPrefixLength) private pure returns (uint) {
+        return TX_DEFAULT_PRICE + _estimateTxInputDataGas(_calldataPrefixLength) + ESTIMATION_CALCULATION_GAS + _getTransferCashbackEstimation();
     }
 
     function _shouldPayCashback() internal view returns (bool);
