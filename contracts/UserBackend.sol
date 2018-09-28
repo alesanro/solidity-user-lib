@@ -27,8 +27,8 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     /// @dev Cashback gas estimations about methods that cannot be measured from inside of the contract.
     /// @dev gas without one callcodecopy estimation taken by BaseByzantiumRouter
     uint constant ROUTER_DELEGATECALL_ESTIMATION = 1153;
-    /// @dev gas taken before startCashbackEstimation() modifier
-    uint constant CASHBACK_BEFORE_ESTIMATION = 483; 
+    /// @dev gas taken before startCashbackEstimation() modifier by 'forward' function
+    uint constant CASHBACK_FORWARD_BEFORE_ESTIMATION = 483; 
     /// @dev gas taken by _transferCashback modifier
     uint constant CASHBACK_TRANSFER_ESTIMATION = 10421 + 250; // TODO: should add +250 more for getOracle() addition
 
@@ -330,28 +330,39 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     public
     returns (bytes32) 
     {
-        return _forward(_destination, _data, _value, _throwOnFailedCall, [uint(0)]);
+        return _multisigForward(_destination, _data, _value, _throwOnFailedCall);
     }
 
     uint constant CALLDATA_PREFIX_FORWARD_LENGTH = 220;
+
+    function _multisigForward(
+        address _destination,
+        bytes _data,
+        uint _value,
+        bool _throwOnFailedCall
+    )
+    private
+    estimateCashbackAndPay(CALLDATA_PREFIX_FORWARD_LENGTH, CASHBACK_FORWARD_BEFORE_ESTIMATION)
+    returns (bytes32) 
+    {
+        return _forward(_destination, _data, _value, _throwOnFailedCall);
+    }
 
     function _forward(
         address _destination,
         bytes _data,
         uint _value,
-        bool _throwOnFailedCall,
-        uint[1] memory _estimations
+        bool _throwOnFailedCall
     )
     private
-    startCashbackEstimation(_estimations)
     onlyCall
     onlyMultiownedWithRemoteOwners
-    finishEstimationAndPayCashback(_estimations, CALLDATA_PREFIX_FORWARD_LENGTH, _getBeforeForwardGasEstimation())
     returns (bytes32) 
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
     }
 
+    /// @notice TODO:
     function forwardWithVRS(
         address _destination,
         bytes _data,
@@ -452,15 +463,17 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
         return isUsingCashback() && msg.sender == address(this);
     }
 
-    function _getBeforeForwardGasEstimation() private view returns (uint) {
+    function _getBeforeExecutionGasEstimation(uint _beforeFunctionEstimation) internal view returns (uint) {
         /*
-        Have '2 * _estimateCalldatacopyGas()' because we have 1 indirect call (from user to router fallback) 
+        - have '2 * _estimateCalldatacopyGas()' because we have 1 indirect call (from user to router fallback) 
         and 1 direct (from router fallback to delegated backend)
+        - 2 of MULTISIG_GET_CONFIRMATION_COUNT_BASE_ESTIMATION - because have 2 invocations for getConfirmationCount
+        - 6 of ROUTER_DELEGATECALL_ESTIMATION - because have approximately 6 invocations to router during delegatecall
         */
         return MULTISIG_CONFIRMATION_ESTIMATION + owners.length * MULTISIG_GET_CONFIRMATION_COUNT_BASE_ESTIMATION +
             (MULTISIG_CONFIRM_TRANSACTION_OVERRIDE_ESTIMATION + owners.length * MULTISIG_GET_CONFIRMATION_COUNT_BASE_ESTIMATION) +
             6 * ROUTER_DELEGATECALL_ESTIMATION + 
-            CASHBACK_BEFORE_ESTIMATION + 
+            _beforeFunctionEstimation + 
             2 * _estimateCalldatacopyGas();
     }
 

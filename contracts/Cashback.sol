@@ -21,21 +21,19 @@ contract Cashback {
 
     uint constant ESTIMATION_CALCULATION_GAS = 51;
 
-    modifier startCashbackEstimation(uint[1] memory _estimations) {
-        _estimations[0] = gasleft();
+    modifier estimateCashbackAndPay(uint _calldataPrefixLength, uint _onlyStartFunctionGas) {
+        uint _gasBefore = gasleft();
+
         _;
-    }
-    
-    modifier finishEstimationAndPayCashback(uint[1] memory _estimations, uint _calldataPrefixLength, uint _beforeStartCashbackGasEstimation) {
-        _;
-        
+
         if (!_shouldPayCashback()) {
             return;
         }
 
+        uint _beforeStartCashbackGasEstimation = _getBeforeExecutionGasEstimation(_onlyStartFunctionGas);
         uint _constantGas = _getConstantGas(_calldataPrefixLength);
         uint _gasAfterwards = gasleft();
-        uint _totalGasSpent = _constantGas + _beforeStartCashbackGasEstimation + (_estimations[0] - _gasAfterwards);
+        uint _totalGasSpent = _constantGas + _beforeStartCashbackGasEstimation + (_gasBefore - _gasAfterwards);
         uint _debt = _totalGasSpent * tx.gasprice;
     
         _transferCashback(_debt);
@@ -77,6 +75,7 @@ contract Cashback {
     }
 
     function _shouldPayCashback() internal view returns (bool);
+    function _getBeforeExecutionGasEstimation(uint _beforeFunctionEstimation) internal view returns (uint);
     function _getTransferCashbackEstimation() internal pure returns (uint);
     function _transferCashback(uint _cashbackValue) internal;
 }
