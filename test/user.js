@@ -13,6 +13,7 @@ const Storage = artifacts.require("Storage")
 const StorageManager = artifacts.require("StorageManager")
 const Owned = artifacts.require("Owned")
 const Mock = artifacts.require("Mock")
+const FakeContractInterface = artifacts.require("FakeContractInterface")
 
 const Reverter = require("./helpers/reverter")
 const ErrorScope = require("../common/errors")
@@ -20,6 +21,7 @@ const eventHelpers = require("./helpers/eventsHelper")
 const utils = require("./helpers/utils")
 const web3Utils = require("web3-utils")
 const Web3Accounts = require("web3-eth-accounts")
+const BytesChecker = require('./helpers/bytes-checker')
 
 async function setupUserWorkflow({ users, }) {
 	const contracts = {
@@ -178,23 +180,43 @@ function CustomAsserts(contracts) {
 			}
 		}
 	}
+
+	this.assertMultisigExecutionFailure = async ({
+		tx, transactionId, userRouter, oracle,
+	}) => {
+		{
+			const notEmittedEvents = [
+				"Submission",
+				"Execution",
+			]
+			const events = await eventHelpers.findEvents([ userRouter, contracts.userBackend, ], tx, e => notEmittedEvents.indexOf(e) >= 0)
+			assert.lengthOf(events, 0, `No multisig events ${notEmittedEvents} should be found`)
+		}
+		{
+			{
+				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "Confirmation"))[0]
+				assert.isDefined(event, "No 'Confirmation' event found")
+				assert.equal(event.args.sender, oracle, "Oracle should be a sender from event")
+				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16), "Transaction id is not equal to expected from event")
+			}
+			{
+				const event = (await eventHelpers.findEvent([contracts.userBackend,], tx, "ExecutionFailure"))[0]
+				assert.isDefined(event, "No 'Execution' event found")
+				assert.equal(event.args.transactionId.toString(16), transactionId.toString(16), "Transaction id is not equal to expected from event")
+			}
+		}
+	}
 }
 
-contract("User Workflow", accounts => {
+function MessageComposer(web3, privateKeys) {
 
-	const reverter = new Reverter(web3)
 	const web3Accounts = new Web3Accounts(web3.currentProvider.address)
 
-	const { users, privateKeys, } = getUsers(accounts)
-
-	let contracts
-	let customAsserts
-
-	const signMessage = ({ message, oracle, }) => {
+	this.signMessage = ({ message, oracle, }) => {
 		return web3Accounts.sign(message, privateKeys[oracle])
 	}
 
-	const getMessageFrom = ({
+	this.composeForwardMessageFrom = ({
 		pass, sender, destination, data, value,
 	}) => {
 		return web3Utils.soliditySha3({
@@ -214,6 +236,44 @@ contract("User Workflow", accounts => {
 			value: value,
 		})
 	}
+}
+
+function AsyncWeb3(web3) {
+	const self = this
+
+	this.getEthBalance = addr => new Promise((resolve, reject) => {
+		web3.eth.getBalance(addr, (e, b) => (e === undefined || e === null) ? resolve(b) : reject(e))
+	})
+
+	this.getTx = hash => new Promise((resolve, reject) => {
+		web3.eth.getTransaction(hash, (e, tx) => (e === undefined || e === null) ? resolve(tx) : reject(e))
+	})
+
+	this.getTxReceipt = hash => new Promise((resolve, reject) => {
+		web3.eth.getTransactionReceipt(hash, (e, tx) => (e === undefined || e === null) ? resolve(tx) : reject(e))
+	})
+
+	this.getTxExpences = async hash => {
+		const fullTx = await self.getTx(hash)
+		const receiptTx = await self.getTxReceipt(hash)
+
+		return web3.toBigNumber(fullTx.gasPrice).mul(web3.toBigNumber(receiptTx.gasUsed))
+	}
+
+	this.sendEth = async ({ from, to, value, }) => {
+		return new Promise((resolve, reject) => {
+			web3.eth.sendTransaction({ from: from, to: to, value: value, }, (e, txHash) => (e === undefined || e === null) ? resolve(txHash) : reject(e))
+		})
+	}
+}
+
+contract("User Workflow", accounts => {
+	const reverter = new Reverter(web3)
+	const { users, privateKeys, } = getUsers(accounts)
+	const messageComposer = new MessageComposer(web3, privateKeys)
+
+	let contracts
+	let customAsserts
 
 	before("setup", async () => {
 		await reverter.promisifySnapshot()
@@ -1619,10 +1679,10 @@ contract("User Workflow", accounts => {
 						const notOracle = users.user2
 
 						before(async () => {
-							message = getMessageFrom({
+							message = messageComposer.composeForwardMessageFrom({
 								pass, sender: user, destination: contracts.mock.address, data, value: 0,
 							})
-							signatureDetails = signMessage({ message, oracle: notOracle, })
+							signatureDetails = messageComposer.signMessage({ message, oracle: notOracle, })
 						})
 
 						afterEach(async () => {
@@ -1658,10 +1718,10 @@ contract("User Workflow", accounts => {
 						const notUser = users.user2
 
 						before(async () => {
-							message = getMessageFrom({
+							message = messageComposer.composeForwardMessageFrom({
 								pass, sender: user, destination: contracts.mock.address, data, value: 0,
 							})
-							signatureDetails = signMessage({ message, oracle: users.oracle, })
+							signatureDetails = messageComposer.signMessage({ message, oracle: users.oracle, })
 						})
 
 						afterEach(async () => {
@@ -1698,10 +1758,10 @@ contract("User Workflow", accounts => {
 
 						before(async () => {
 							invalidSendData = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(users.user2, true)
-							message = getMessageFrom({
+							message = messageComposer.composeForwardMessageFrom({
 								pass, sender: user, destination: contracts.mock.address, data, value: 0,
 							})
-							signatureDetails = signMessage({ message, oracle: users.oracle, })
+							signatureDetails = messageComposer.signMessage({ message, oracle: users.oracle, })
 						})
 
 						afterEach(async () => {
@@ -1737,10 +1797,10 @@ contract("User Workflow", accounts => {
 						const invalidPass = "0xffffffff"
 
 						before(async () => {
-							message = getMessageFrom({
+							message = messageComposer.composeForwardMessageFrom({
 								pass, sender: user, destination: contracts.mock.address, data, value: 0,
 							})
-							signatureDetails = signMessage({ message, oracle: users.oracle, })
+							signatureDetails = messageComposer.signMessage({ message, oracle: users.oracle, })
 						})
 
 						afterEach(async () => {
@@ -1777,10 +1837,10 @@ contract("User Workflow", accounts => {
 
 						before(async () => {
 							destination = contracts.mock.address
-							message = getMessageFrom({
+							message = messageComposer.composeForwardMessageFrom({
 								pass, sender: user, destination: destination, data, value: 0,
 							})
-							signatureDetails = signMessage({ message, oracle: users.oracle, })
+							signatureDetails = messageComposer.signMessage({ message, oracle: users.oracle, })
 						})
 
 						afterEach(async () => {
@@ -2314,10 +2374,10 @@ contract("User Workflow", accounts => {
 							let signatureDetails
 
 							before(async () => {
-								message = getMessageFrom({
+								message = messageComposer.composeForwardMessageFrom({
 									pass, sender: remoteOwner, destination: contracts.mock.address, data, value: 0,
 								})
-								signatureDetails = signMessage({ message, oracle: users.oracle, })
+								signatureDetails = messageComposer.signMessage({ message, oracle: users.oracle, })
 							})
 
 							it("should allow to forward invocation", async () => {
@@ -2348,4 +2408,428 @@ contract("User Workflow", accounts => {
 			})
 		})
 	})
+})
+
+
+contract.only("User ('forward' cashback)", accounts => {
+	const reverter = new Reverter(web3)
+	const { users, } = getUsers(accounts)
+	const asyncWeb3 = new AsyncWeb3(web3)
+	const bytesChecker = new BytesChecker()
+
+	let contracts
+	let customAsserts
+
+	const userAccount = {
+		address: users.user1,
+		routerAddress: null,
+		proxyAddress: null,
+		router: null,
+		proxy: null,
+	}
+
+	before("setup", async () => {
+		await reverter.promisifySnapshot()
+
+		contracts = await setupUserWorkflow({ users, })
+		contracts.fakeInterface = await FakeContractInterface.new()
+		customAsserts = new CustomAsserts(contracts)
+
+		{
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(userAccount.address, false, { from: userAccount.address, })
+			{
+				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
+				assert.isDefined(event)
+				assert.isDefined(event.args.user)
+				assert.isDefined(event.args.proxy)
+				assert.equal(event.args.recoveryContract, users.recovery)
+				assert.equal(event.args.owner, userAccount.address)
+
+				userAccount.routerAddress = event.args.user
+				userAccount.proxyAddress = event.args.proxy
+				userAccount.router = await UserInterface.at(userAccount.routerAddress)
+				userAccount.proxy = await UserProxy.at(userAccount.proxyAddress)
+			}
+		}
+
+		await reverter.promisifySnapshot()
+	})
+
+	after(async () => {
+		await reverter.promisifyRevert(0)
+	})
+
+	context("cashback flag", () => {
+		let snapshotId
+
+		before(async () => {
+			await reverter.promisifySnapshot()
+			snapshotId = reverter.snapshotId
+		})
+
+		after(async () => {
+			await reverter.promisifyRevert(snapshotId)
+		})
+
+		it("should be 'false' by default for user backend", async () => {
+			assert.isFalse(await contracts.userBackend.isUsingCashback())
+		})
+
+		it("should be 'false' for user router", async () => {
+			assert.isFalse(await UserBackend.at(userAccount.routerAddress).isUsingCashback())
+		})
+
+		it("should THROW and NOT allow a setup in user router", async () => {
+			await UserBackend.at(userAccount.routerAddress).setUseCashback(true, { from: userAccount.address, }).then(assert.fail, () => true)
+		})
+
+		it("should NOT allow a setup in userBackend for non-contract owner with UNAUTHORIZED code", async () => {
+			const noncontractOwner = users.user2
+			assert.notEqual(noncontractOwner, users.contractOwner)
+			assert.equal(
+				(await contracts.userBackend.setUseCashback.call(true, { from: noncontractOwner, })).toString(16),
+				ErrorScope.UNAUTHORIZED.toString(16)
+			)
+		})
+
+		it("should allow a setup in userBackend for contract owner with OK code", async () => {
+			assert.equal(
+				(await contracts.userBackend.setUseCashback.call(true, { from: users.contractOwner, })).toString(16),
+				ErrorScope.OK.toString(16)
+			)
+		})
+
+		it("hould allow a setup in userBackend for contract owner", async () => {
+			await contracts.userBackend.setUseCashback(true, { from: users.contractOwner, })
+			assert.isTrue(await contracts.userBackend.isUsingCashback())
+		})
+
+		it("should be 'true' for user router", async () => {
+			assert.isTrue(await UserBackend.at(userAccount.routerAddress).isUsingCashback())
+		})
+	})
+
+	context("cashback = 'on'", () => {
+		const fakeAddress = "0x2323232323232323232323232323232323232323"
+		const fakeAccountAddress = "0x5555555555555555555555555555555555555555"
+		const customReturn = "0x0000ffff0000ffff0000ffff0000aaff0000ffff0000ffff0000ffff0000aaff"
+
+		let snapshotId
+
+		before(async () => {
+			await reverter.promisifySnapshot()
+			snapshotId = reverter.snapshotId
+			
+			await contracts.userBackend.setUseCashback(true, { from: users.contractOwner, })
+
+			await reverter.promisifySnapshot()
+		})
+
+		after(async () => {
+			await reverter.promisifyRevert(snapshotId)
+		})
+
+		it("should be 'true' for user backend", async () => {
+			assert.isTrue(await contracts.userBackend.isUsingCashback())
+		})
+
+		it("should be 'true' for user router", async () => {
+			assert.isTrue(await UserBackend.at(userAccount.routerAddress).isUsingCashback())
+		})
+
+		context("2FA = 'off'", () => {
+			let dataProvider
+			let snapshotId
+
+			const sentEther = web3.toWei("1", "ether")
+			let proxyBalanceBefore
+			let oracleBalanceBefore
+
+			before(async () => {
+				dataProvider = {
+					getDescription: () => `${'userBackend.set2FA(bool)'}`,
+					getData: () => contracts.userBackend.contract.set2FA.getData(true),
+				}
+
+				await reverter.promisifySnapshot()
+				snapshotId = reverter.snapshotId
+
+				await contracts.mock.expect(
+					userAccount.proxyAddress,
+					0,
+					dataProvider.getData(),
+					customReturn
+				)
+
+				await asyncWeb3.sendEth({ from: userAccount.address, to: userAccount.proxyAddress, value: sentEther, })
+				proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+				oracleBalanceBefore = await asyncWeb3.getEthBalance(users.oracle)
+			})
+
+			after(async () => {
+				await reverter.promisifyRevert(snapshotId)
+			})
+
+			it("should 2FA be 'off'", async () => {
+				assert.isFalse(await userAccount.router.use2FA.call())
+			})
+
+			it("should NOT have a payment back", async () => {
+				await userAccount.router.forward(contracts.mock.address, dataProvider.getData(), 0, true, { from: userAccount.address, })
+				await customAsserts.assertExpectations(0,1)
+
+				const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+				const oracleBalanceAfter = await asyncWeb3.getEthBalance(users.oracle)
+
+				assert.equal(proxyBalanceBefore.toString(16), proxyBalanceAfter.toString(16))
+				assert.equal(oracleBalanceBefore.toString(16), oracleBalanceAfter.toString(16))
+			})
+		})
+		
+		context("2FA = 'on'", () => {
+
+			before(async () => {
+				await userAccount.router.set2FA(true, { from: userAccount.address, })
+			})
+
+			const data = [
+				{
+					getDescription: () => `${'userBackend.getUserProxy()'}`,
+					getData: () => contracts.userBackend.contract.getUserProxy.getData(),
+				},
+				{
+					getDescription: () => `${'userBackend.setUserProxy(address)'}`,
+					getData: () => contracts.userBackend.contract.setUserProxy.getData(fakeAddress),
+				},
+				{
+					getDescription: () => `${'userBackend.set2FA(bool)'}`,
+					getData: () => contracts.userBackend.contract.set2FA.getData(true),
+				},
+				{
+					getDescription: () => `${'userBackend.forwardWithVRS(...) with almost empty data'}`,
+					getData: () => contracts.userBackend.contract.forwardWithVRS.getData(fakeAddress, contracts.userBackend.contract.setRecoveryContract.getData(fakeAddress), 0, false, "0x44ee", 1, "0x44ee", "0x44ee"),
+				},
+				{
+					getDescription: () => `${'rolesLibrary.setRootUser(address)'}`,
+					getData: () => contracts.rolesLibrary.contract.setRootUser.getData(fakeAccountAddress, true),
+				},
+				{
+					getDescription: () => `${'rolesLibrary.setPublicCapability(address,bytes4,bool)'}`,
+					getData: () => contracts.rolesLibrary.contract.setPublicCapability.getData(fakeAddress, "0xbb11bb", true),
+				},
+				{
+					getDescription: () => `${'userRegistry.removeUserContractFrom(address,address)'}`,
+					getData: () => contracts.userRegistry.contract.removeUserContractFrom.getData(fakeAddress, fakeAccountAddress),
+				},
+				{
+					getDescription: () => `${'fakeInterface.postJobInBoard(uint,uint,uint,uint,uint,bytes32,uint)'}`,
+					getData: () => contracts.fakeInterface.contract.postJobInBoard.getData(12,4,3,2,100000000,"0xeeeeeeffffffaaaaaaaacccccccccc",43),
+				},
+				{
+					getDescription: () => `${'fakeInterface.postJobOffer(uint,uint,uint,uint)'}`,
+					getData: () => contracts.fakeInterface.contract.postJobOffer.getData(12,100000000,1000,200000000),
+				},
+				{
+					getDescription: () => `${'fakeInterface.transferWithFee(address,address,uint,uint)'}`,
+					getData: () => contracts.fakeInterface.contract.transferWithFee.getData(fakeAddress,fakeAccountAddress,23,43),
+				},
+				{
+					getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - short'}`,
+					getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,],[23,],2,100023242),
+				},
+				{
+					getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - medium'}`,
+					getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,],[23,23,23,23,23,],2,100023242),
+				},
+				{
+					getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - long'}`,
+					getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,],[23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,],2,100023242),
+				},
+				{
+					getDescription: () => `${'fakeInterface.rateWorkerSkills(uint,address,uint,uint,uint[],uint8[]) - medium'}`,
+					getData: () => contracts.fakeInterface.contract.rateWorkerSkills.getData(1883729878287234,fakeAddress,2828237987942,20029328492348298,[89279872,234234,2342,3534534534,345345304980980292345,2345234532452345,],[10,9,8,7,6,3,5,6,7,8]),
+				},
+				{
+					getDescription: () => `${'fakeInterface.evaluateMany(address,uint,uint[],uint[],uint8[]) - short'}`,
+					getData: () => contracts.fakeInterface.contract.evaluateMany.getData(fakeAddress,897293847234,[2239234,234,23423423,11121212,],[2239234,234,23423423,11121212,],[22,55,11,111,]),
+				},
+			]
+
+			const thirdPartyOwners = [
+				[],
+				[ users.user2, ],
+				[ users.user2, users.user3, ],
+				[ users.user2, users.user3, users.remoteOwner1, ],
+				[ users.user2, users.user3, users.remoteOwner1, users.remoteOwner2, ],
+				[ users.user2, users.user3, users.remoteOwner1, users.remoteOwner2, users.recovery, ],
+			]
+			
+			for (const dataItem of data) {
+				for (const thirdparties of thirdPartyOwners) {
+					describe(`invocation with dataItem ${dataItem.getDescription()} with ${thirdparties.length} thirdparty`, () => {
+						let data
+						let initTx
+						let transactionId
+						let confirmTx
+						let snapshotId
+
+						const sentEther = web3.toWei("1", "ether")
+						let proxyBalanceBefore
+						let oracleBalanceBefore
+
+						before(async () => {
+							await reverter.promisifySnapshot()
+							snapshotId = reverter.snapshotId
+
+							for (const thirdpartyOwner of thirdparties) {
+								const tx = await userAccount.router.addThirdPartyOwner(thirdpartyOwner, { from: userAccount.address, })
+								const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy: userAccount.proxy, user: userAccount.address, })
+								await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+							}
+
+							data = dataItem.getData()
+							{
+								const { external: inputDataExternalGas, contract: customInputDataGas, } = bytesChecker.inputDataGas(data.slice(2))
+								const { length: totalBytes, nonZeroBytes, } = bytesChecker.countBytesInString(data.slice(2))
+								console.log(`
+								Data:
+								# input data calc: ${inputDataExternalGas}
+								# contract input data calc: ${customInputDataGas}
+								# total bytes: ${totalBytes} / ${nonZeroBytes}
+								`)
+							}
+							await contracts.mock.expect(
+								userAccount.proxyAddress,
+								0,
+								data,
+								customReturn
+							)
+
+							await asyncWeb3.sendEth({ from: userAccount.address, to: userAccount.proxyAddress, value: sentEther, })
+							proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+							oracleBalanceBefore = await asyncWeb3.getEthBalance(users.oracle)
+						})
+
+						after(async () => {
+							await reverter.promisifyRevert(snapshotId)
+						})
+		
+						it("should NOT have a payment for initial 'forward", async () => {
+							initTx = await userAccount.router.forward(contracts.mock.address, data, 0, true, { from: userAccount.address, })
+							await customAsserts.assertExpectations(1, 0)
+							transactionId = await customAsserts.assertMultisigSubmitPresence({ tx: initTx, userProxy: userAccount.proxy, user: userAccount.address, })
+						})
+		
+						it("should have a payment after oracle's confirmation", async () => {
+							confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, }).then(r => r, assert.fail)
+							await customAsserts.assertMultisigExecutionPresence({
+								tx: confirmTx,
+								transactionId,
+								userRouter: userAccount.router,
+								oracle: users.oracle,
+							})
+							await customAsserts.assertExpectations(0, 1)
+						})
+		
+						it("should have payed back results", async () => {
+							const fullTx = await asyncWeb3.getTx(confirmTx.tx)
+							const txRealGas = (await asyncWeb3.getTxReceipt(confirmTx.tx)).gasUsed
+							const txRealExpenses = await asyncWeb3.getTxExpences(confirmTx.tx)
+							const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+							const oracleBalanceAfter = await asyncWeb3.getEthBalance(users.oracle)
+
+							const cashbackValue = await proxyBalanceBefore.sub(proxyBalanceAfter)
+							const cashbackGas = cashbackValue.div(fullTx.gasPrice)
+							const cashbackOverpricedAbsolute = cashbackValue.sub(txRealExpenses)
+							const cashbackOverpricedPercent = cashbackOverpricedAbsolute.div(txRealExpenses).mul(100)
+
+							console.log(`
+							# - gas price: ${fullTx.gasPrice}
+							# - gas used: ${txRealGas}
+							# - gas calculated: ${cashbackGas.toNumber()}
+							# - % of overpayment: ${cashbackOverpricedPercent.toNumber().toFixed(2)}
+							# - absolute overpayment: ${cashbackGas.sub(txRealGas).toNumber()}
+							# - oracle received back: ${web3.fromWei((oracleBalanceAfter.sub(oracleBalanceBefore)), "ether")}
+							`)
+							// # Before:
+							// # - proxy balance: ${proxyBalanceBefore.toString()}
+							// # - oracle balance: ${oracleBalanceBefore.toString()}
+							// # --------
+							// # - real tx expenses: ${txRealExpenses.toString()}
+							// # - cashback value: ${cashbackValue.toString()}
+							// # - earning by oracle: ${oracleBalanceAfter.sub(oracleBalanceBefore).toString()}
+
+							assert.isAtLeast(cashbackValue.toNumber(), txRealExpenses.toNumber(), "Cashback doesn't cover tx expenses of an oracle")
+							assert.isAtMost(cashbackOverpricedPercent.toNumber(), 20, `Cashback shouldn't exceed real expenses more than for max percent`)
+						})
+					})
+				}
+			}
+
+			describe("no ETH on proxy's address", () => {
+				let dataProvider
+				let snapshotId
+				let initTx
+				let transactionId
+				let confirmTx
+
+				let proxyBalanceBefore
+
+				before(async () => {
+					dataProvider = {
+						getDescription: () => `${'userBackend.set2FA(bool)'}`,
+						getData: () => contracts.userBackend.contract.set2FA.getData(true),
+					}
+
+					await reverter.promisifySnapshot()
+					snapshotId = reverter.snapshotId
+
+					await contracts.mock.expect(
+						userAccount.proxyAddress,
+						0,
+						dataProvider.getData(),
+						customReturn
+					)
+
+					proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+				})
+
+				after(async () => {
+					await reverter.promisifyRevert(snapshotId)
+				})
+
+				it("should 2FA be 'on'", async () => {
+					assert.isTrue(await userAccount.router.use2FA.call())
+				})
+
+				it("should allow for initial 'forward'", async () => {
+					initTx = await userAccount.router.forward(contracts.mock.address, dataProvider.getData(), 0, true, { from: userAccount.address, })
+					await customAsserts.assertExpectations(1, 0)
+					transactionId = await customAsserts.assertMultisigSubmitPresence({ tx: initTx, userProxy: userAccount.proxy, user: userAccount.address, })
+				})
+
+				it("should NOT allow to execute on oracle's confirmation", async () => {
+					confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+					await customAsserts.assertMultisigExecutionFailure({
+						tx: confirmTx,
+						transactionId,
+						userRouter: userAccount.router,
+						oracle: users.oracle,
+					})
+					await customAsserts.assertExpectations(1, 0)
+
+					const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+					assert.equal(proxyBalanceBefore.toString(16), proxyBalanceAfter.toString(16), "Proxy balance should not change")
+				})
+			})
+		})
+	})
+	
+	context("cashback = 'off'", () => {
+
+		context("2FA = 'on' (one of default states and already tested)", () => {})
+
+		context("2FA = 'off' (one of default states and already tested)", () => {})
+	})
+
 })
