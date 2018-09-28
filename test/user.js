@@ -21,11 +21,60 @@ const utils = require("./helpers/utils")
 const web3Utils = require("web3-utils")
 const Web3Accounts = require("web3-eth-accounts")
 
-contract("User Workflow", accounts => {
+async function setupUserWorkflow({ users, }) {
+	const contracts = {
+		storage: null,
+		storageManager: null,
+		userBackend: null,
+		userRegistry: null,
+		userBackendProvider: null,
+		userFactory: null,
+		rolesLibrary: null,
+		mock: null,
+	}
 
-	const reverter = new Reverter(web3)
-	const web3Accounts = new Web3Accounts(web3.currentProvider.address)
+	contracts.storage = await Storage.new({ from: users.contractOwner, })
+	contracts.storageManager = await StorageManager.new({ from: users.contractOwner, })
+	await contracts.storageManager.setupEventsHistory(contracts.storageManager.address, { from: users.contractOwner, })
+	await contracts.storage.setManager(contracts.storageManager.address, { from: users.contractOwner, })
 
+	contracts.userBackend = await UserBackend.new({ from: users.contractOwner, })
+
+	contracts.rolesLibrary = await Roles2Library.new(contracts.storage.address, "RolesLib", { from: users.contractOwner, })
+	await contracts.storageManager.giveAccess(contracts.rolesLibrary.address, "RolesLib", { from: users.contractOwner, })
+	await contracts.rolesLibrary.setRootUser(users.contractOwner, true, { from: users.contractOwner, })
+	await contracts.rolesLibrary.setupEventsHistory(contracts.rolesLibrary.address, { from: users.contractOwner, })
+
+	contracts.userRegistry = await UserRegistry.new(contracts.storage.address, "UserRegistry", contracts.rolesLibrary.address, { from: users.contractOwner, })
+	await contracts.storageManager.giveAccess(contracts.userRegistry.address, "UserRegistry", { from: users.contractOwner, })
+	await contracts.userRegistry.setupEventsHistory(contracts.userRegistry.address, { from: users.contractOwner, })
+
+	contracts.userBackendProvider = await UserBackendProvider.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
+	await contracts.userBackendProvider.setUserBackend(contracts.userBackend.address, { from: users.contractOwner, })
+	await contracts.userBackendProvider.setUserRegistry(contracts.userRegistry.address, { from: users.contractOwner, })
+
+	contracts.userFactory = await UserFactory.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
+	await contracts.userFactory.setUserBackendProvider(contracts.userBackendProvider.address, { from: users.contractOwner, })
+	await contracts.userFactory.setOracleAddress(users.oracle, { from: users.contractOwner, })
+	await contracts.userFactory.setUserRecoveryAddress(users.recovery, { from: users.contractOwner, })
+
+	contracts.mock = await Mock.new()
+
+	// NOTE: HERE!!!! RIGHTS SHOULD BE GRANTED TO UserFactory TO ACCESS UserRegistry CONTRACT MODIFICATION
+	{
+		const Roles = { USER_REGISTRY_ROLE: 11, }
+
+		await contracts.rolesLibrary.addUserRole(contracts.userFactory.address, Roles.USER_REGISTRY_ROLE, { from: users.contractOwner, })
+		{
+			const sig = contracts.userRegistry.contract.addUserContract.getData(0x0).slice(0,10)
+			await contracts.rolesLibrary.addRoleCapability(Roles.USER_REGISTRY_ROLE, contracts.userRegistry.address, sig, { from: users.contractOwner, })
+		}
+	}
+
+	return contracts
+}
+
+function getUsers(accounts) {
 	const users = {
 		contractOwner: accounts[0],
 		user1: accounts[1],
@@ -43,18 +92,14 @@ contract("User Workflow", accounts => {
 		[users.oracle]: "0x46e5df8a291ff9112503a1007b0288f44132e4542397b4ca6415094393ef7cb9",
 	}
 
-	const contracts = {
-		storage: null,
-		storageManager: null,
-		userBackend: null,
-		userRegistry: null,
-		userBackendProvider: null,
-		userFactory: null,
-		rolesLibrary: null,
-		mock: null,
+	return {
+		users: users,
+		privateKeys: privateKeys,
 	}
+}
 
-	const assertExpectations = async (expected = 0, callsCount = null) => {
+function CustomAsserts(contracts) {
+	this.assertExpectations = async (expected = 0, callsCount = null) => {
 		assert.equal(
 			(await contracts.mock.expectationsLeft()).toString(16),
 			expected.toString(16),
@@ -69,7 +114,7 @@ contract("User Workflow", accounts => {
 		)
 	}
 
-	const assertNoMultisigPresence = async tx => {
+	this.assertNoMultisigPresence = async tx => {
 		const notEmittedEvents = [
 			"Confirmation",
 			"Submission",
@@ -80,7 +125,7 @@ contract("User Workflow", accounts => {
 	}
 
 	/// @return transactionId
-	const assertMultisigSubmitPresence = async ({ tx, userProxy, user, }) => {
+	this.assertMultisigSubmitPresence = async ({ tx, userProxy, user, }) => {
 		let transactionId
 		{
 			const notEmittedEvents = [
@@ -109,7 +154,7 @@ contract("User Workflow", accounts => {
 		return transactionId
 	}
 
-	const assertMultisigExecutionPresence = async ({
+	this.assertMultisigExecutionPresence = async ({
 		tx, transactionId, userRouter, oracle,
 	}) => {
 		{
@@ -133,6 +178,17 @@ contract("User Workflow", accounts => {
 			}
 		}
 	}
+}
+
+contract("User Workflow", accounts => {
+
+	const reverter = new Reverter(web3)
+	const web3Accounts = new Web3Accounts(web3.currentProvider.address)
+
+	const { users, privateKeys, } = getUsers(accounts)
+
+	let contracts
+	let customAsserts
 
 	const signMessage = ({ message, oracle, }) => {
 		return web3Accounts.sign(message, privateKeys[oracle])
@@ -162,43 +218,8 @@ contract("User Workflow", accounts => {
 	before("setup", async () => {
 		await reverter.promisifySnapshot()
 
-		contracts.storage = await Storage.new({ from: users.contractOwner, })
-		contracts.storageManager = await StorageManager.new({ from: users.contractOwner, })
-		await contracts.storageManager.setupEventsHistory(contracts.storageManager.address, { from: users.contractOwner, })
-		await contracts.storage.setManager(contracts.storageManager.address, { from: users.contractOwner, })
-
-		contracts.userBackend = await UserBackend.new({ from: users.contractOwner, })
-
-		contracts.rolesLibrary = await Roles2Library.new(contracts.storage.address, "RolesLib", { from: users.contractOwner, })
-		await contracts.storageManager.giveAccess(contracts.rolesLibrary.address, "RolesLib", { from: users.contractOwner, })
-		await contracts.rolesLibrary.setRootUser(users.contractOwner, true, { from: users.contractOwner, })
-		await contracts.rolesLibrary.setupEventsHistory(contracts.rolesLibrary.address, { from: users.contractOwner, })
-
-		contracts.userRegistry = await UserRegistry.new(contracts.storage.address, "UserRegistry", contracts.rolesLibrary.address, { from: users.contractOwner, })
-		await contracts.storageManager.giveAccess(contracts.userRegistry.address, "UserRegistry", { from: users.contractOwner, })
-		await contracts.userRegistry.setupEventsHistory(contracts.userRegistry.address, { from: users.contractOwner, })
-
-		contracts.userBackendProvider = await UserBackendProvider.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
-		await contracts.userBackendProvider.setUserBackend(contracts.userBackend.address, { from: users.contractOwner, })
-		await contracts.userBackendProvider.setUserRegistry(contracts.userRegistry.address, { from: users.contractOwner, })
-
-		contracts.userFactory = await UserFactory.new(contracts.rolesLibrary.address, { from: users.contractOwner, })
-		await contracts.userFactory.setUserBackendProvider(contracts.userBackendProvider.address, { from: users.contractOwner, })
-		await contracts.userFactory.setOracleAddress(users.oracle, { from: users.contractOwner, })
-		await contracts.userFactory.setUserRecoveryAddress(users.recovery, { from: users.contractOwner, })
-
-		contracts.mock = await Mock.new()
-
-		// NOTE: HERE!!!! RIGHTS SHOULD BE GRANTED TO UserFactory TO ACCESS UserRegistry CONTRACT MODIFICATION
-		{
-			const Roles = { USER_REGISTRY_ROLE: 11, }
-
-			await contracts.rolesLibrary.addUserRole(contracts.userFactory.address, Roles.USER_REGISTRY_ROLE, { from: users.contractOwner, })
-			{
-				const sig = contracts.userRegistry.contract.addUserContract.getData(0x0).slice(0,10)
-				await contracts.rolesLibrary.addRoleCapability(Roles.USER_REGISTRY_ROLE, contracts.userRegistry.address, sig, { from: users.contractOwner, })
-			}
-		}
+		contracts = await setupUserWorkflow({ users, })
+		customAsserts = new CustomAsserts(contracts)
 
 		await reverter.promisifySnapshot()
 	})
@@ -265,7 +286,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await contracts.userFactory.setupEventsHistory(newEventsHistory, { from: caller, })
-				await assertExpectations()
+				await customAsserts.assertExpectations()
 
 				assert.equal(
 					await contracts.userFactory.getEventsHistory.call(),
@@ -295,7 +316,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await contracts.userFactory.setOracleAddress(newOracleAddress, { from: caller, })
-				await assertExpectations()
+				await customAsserts.assertExpectations()
 
 				assert.equal(
 					await contracts.userFactory.oracle.call(),
@@ -321,7 +342,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await contracts.userFactory.setUserRecoveryAddress(newUserRecoveryAddress, { from: caller, })
-				await assertExpectations()
+				await customAsserts.assertExpectations()
 
 				assert.equal(
 					await contracts.userFactory.userRecoveryAddress.call(),
@@ -463,7 +484,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await contracts.userBackendProvider.setUserBackend(newUserBackend, { from: caller, })
-				await assertExpectations()
+				await customAsserts.assertExpectations()
 
 				assert.equal(
 					await contracts.userBackendProvider.getUserBackend.call(),
@@ -500,7 +521,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await contracts.userBackendProvider.setUserRegistry(newUserRegistry, { from: caller, })
-				await assertExpectations()
+				await customAsserts.assertExpectations()
 
 				assert.equal(
 					await contracts.userBackendProvider.getUserRegistry.call(),
@@ -678,7 +699,7 @@ contract("User Workflow", accounts => {
 			)
 
 			await UserInterface.at(userRouterAddress).forward(contracts.mock.address, data, 0, true, { from: user, }).then(() => true, assert.fail)
-			await assertExpectations()
+			await customAsserts.assertExpectations()
 		})
 
 		it("anyone should NOT be able to update recovery contract with UNAUTHORIZED code", async () => {
@@ -929,7 +950,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await userRouter.forward(contracts.mock.address, data, 0, true, { from: user, }).then(() => true, assert.fail)
-				await assertExpectations(1, 1)
+				await customAsserts.assertExpectations(1, 1)
 			})
 
 			it("and forward should go through a new proxy", async () => {
@@ -942,7 +963,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await userRouter.forward(contracts.mock.address, data, 0, true, { from: user, }).then(() => true, assert.fail)
-				await assertExpectations(0, 1)
+				await customAsserts.assertExpectations(0, 1)
 			})
 		})
 
@@ -1054,7 +1075,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await contracts.userFactory.setUserBackendProvider(newUserBackendProvider.address, { from: caller, })
-				await assertExpectations()
+				await customAsserts.assertExpectations()
 
 				await reverter.promisifyRevert()
 			})
@@ -1086,7 +1107,7 @@ contract("User Workflow", accounts => {
 				)
 
 				await contracts.userFactory.updateBackendProviderForUser(userRouter.address, { from: caller, })
-				await assertExpectations()
+				await customAsserts.assertExpectations()
 
 				await reverter.promisifyRevert()
 			})
@@ -1143,7 +1164,7 @@ contract("User Workflow", accounts => {
 						const event = (await eventHelpers.findEvent([userRouter,], tx, "User2FAChanged"))[0]
 						assert.isUndefined(event)
 					}
-					await assertNoMultisigPresence(tx)
+					await customAsserts.assertNoMultisigPresence(tx)
 				})
 
 				it("and anyone should NOT be able to turn on 2FA with UNAUTHORIZED code", async () => {
@@ -1194,8 +1215,8 @@ contract("User Workflow", accounts => {
 					)
 
 					const tx = await userRouter.forward(contracts.mock.address, data, 0, true, { from: user, }).then(r => r, assert.fail)
-					await assertExpectations(1, 0)
-					transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+					await customAsserts.assertExpectations(1, 0)
+					transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 				})
 
 				it("and anyone THROW and should NOT able to confirm submitted transaction and execute forward call", async () => {
@@ -1208,8 +1229,8 @@ contract("User Workflow", accounts => {
 
 				it("and oracle should confirm submitted transaction and execute forward call", async () => {
 					const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, }).then(r => r, assert.fail)
-					await assertExpectations(0, 1)
-					await assertMultisigExecutionPresence({
+					await customAsserts.assertExpectations(0, 1)
+					await customAsserts.assertMultisigExecutionPresence({
 						tx, transactionId, userRouter, oracle: users.oracle,
 					})
 					{
@@ -1263,12 +1284,12 @@ contract("User Workflow", accounts => {
 
 					it("should allow to submit update of recovery contract by an user", async () => {
 						const tx = await userRouter.setRecoveryContract(newRecoveryAddress, { from: user, })
-						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+						transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 					})
 
 					it("should allow to confirm update of recovery contract by an oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-						await assertMultisigExecutionPresence({
+						await customAsserts.assertMultisigExecutionPresence({
 							tx, transactionId, userRouter, oracle: users.oracle,
 						})
 					})
@@ -1298,7 +1319,7 @@ contract("User Workflow", accounts => {
 
 					it("should NOT have multisig when trying to recover a user", async () => {
 						const tx = await userRouter.recoverUser(newUserOwner, { from: users.recovery, })
-						await assertNoMultisigPresence(tx)
+						await customAsserts.assertNoMultisigPresence(tx)
 					})
 
 					it("should have updated contract owner", async () => {
@@ -1374,12 +1395,12 @@ contract("User Workflow", accounts => {
 
 					it("should allow to submit update of user proxy by a user", async () => {
 						const tx = await userRouter.setUserProxy(newUserProxyAddress, { from: user, })
-						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+						transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 					})
 
 					it("should allow to confirm update of user proxy contract by an oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-						await assertMultisigExecutionPresence({
+						await customAsserts.assertMultisigExecutionPresence({
 							tx, transactionId, userRouter, oracle: users.oracle,
 						})
 					})
@@ -1410,12 +1431,12 @@ contract("User Workflow", accounts => {
 
 					it("should allow to submit update of oracle by a user", async () => {
 						const tx = await userRouter.setOracle(newOracleAddress, { from: user, })
-						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+						transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 					})
 
 					it("should allow to confirm update of oracle by an oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-						await assertMultisigExecutionPresence({
+						await customAsserts.assertMultisigExecutionPresence({
 							tx, transactionId, userRouter, oracle: users.oracle,
 						})
 					})
@@ -1433,7 +1454,7 @@ contract("User Workflow", accounts => {
 
 					it("should be able to perform to submit new oracle change by a user to an old oracle", async () => {
 						const tx = await userRouter.setOracle(users.oracle, { from: user, })
-						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+						transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 					})
 
 					it("should THROW and NOT allow to confirm update of oracle by an old oracle", async () => {
@@ -1442,7 +1463,7 @@ contract("User Workflow", accounts => {
 
 					it("should allow to confirm update of oracle by a new oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: newOracleAddress, })
-						await assertMultisigExecutionPresence({
+						await customAsserts.assertMultisigExecutionPresence({
 							tx, transactionId, userRouter, oracle: newOracleAddress,
 						})
 					})
@@ -1472,7 +1493,7 @@ contract("User Workflow", accounts => {
 
 					it("should allow to submit update of 2FA by a user", async () => {
 						const tx = await userRouter.set2FA(false, { from: user, })
-						transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+						transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 						{
 							const event = (await eventHelpers.findEvent([userRouter,], tx, "User2FAChanged"))[0]
 							assert.isUndefined(event)
@@ -1481,7 +1502,7 @@ contract("User Workflow", accounts => {
 
 					it("should allow to confirm update of 2FA contract by an oracle", async () => {
 						const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-						await assertMultisigExecutionPresence({
+						await customAsserts.assertMultisigExecutionPresence({
 							tx, transactionId, userRouter, oracle: users.oracle,
 						})
 						{
@@ -1551,8 +1572,8 @@ contract("User Workflow", accounts => {
 							"",
 							{ from: user, }
 						)
-						await assertExpectations(0, 1)
-						await assertNoMultisigPresence(tx)
+						await customAsserts.assertExpectations(0, 1)
+						await customAsserts.assertNoMultisigPresence(tx)
 					})
 				})
 
@@ -1590,8 +1611,8 @@ contract("User Workflow", accounts => {
 							"",
 							{ from: user, }
 						)
-						await assertExpectations(1, 0)
-						await assertNoMultisigPresence(tx)
+						await customAsserts.assertExpectations(1, 0)
+						await customAsserts.assertNoMultisigPresence(tx)
 					})
 
 					describe("signed by invalid oracle", () => {
@@ -1628,8 +1649,8 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: user, }
 							)
-							await assertExpectations(1, 0)
-							await assertNoMultisigPresence(tx)
+							await customAsserts.assertExpectations(1, 0)
+							await customAsserts.assertNoMultisigPresence(tx)
 						})
 					})
 
@@ -1667,8 +1688,8 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: notUser, }
 							)
-							await assertExpectations(1, 0)
-							await assertNoMultisigPresence(tx)
+							await customAsserts.assertExpectations(1, 0)
+							await customAsserts.assertNoMultisigPresence(tx)
 						})
 					})
 
@@ -1707,8 +1728,8 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: user, }
 							)
-							await assertExpectations(1, 0)
-							await assertNoMultisigPresence(tx)
+							await customAsserts.assertExpectations(1, 0)
+							await customAsserts.assertNoMultisigPresence(tx)
 						})
 					})
 
@@ -1746,8 +1767,8 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: user, }
 							)
-							await assertExpectations(1, 0)
-							await assertNoMultisigPresence(tx)
+							await customAsserts.assertExpectations(1, 0)
+							await customAsserts.assertNoMultisigPresence(tx)
 						})
 					})
 
@@ -1786,8 +1807,8 @@ contract("User Workflow", accounts => {
 								signatureDetails.s,
 								{ from: user, }
 							)
-							await assertExpectations(0, 1)
-							await assertNoMultisigPresence(tx)
+							await customAsserts.assertExpectations(0, 1)
+							await customAsserts.assertNoMultisigPresence(tx)
 						})
 					})
 				})
@@ -2010,7 +2031,7 @@ contract("User Workflow", accounts => {
 						)
 
 						const tx = await userRouter.forward(contracts.mock.address, data, 0, true, { from: remoteOwner, }).then(r => r, assert.fail)
-						await assertNoMultisigPresence(tx)
+						await customAsserts.assertNoMultisigPresence(tx)
 					})
 
 					it("should allow to 'forwardWithVRS'", async () => {
@@ -2034,8 +2055,8 @@ contract("User Workflow", accounts => {
 							"",
 							{ from: remoteOwner, }
 						)
-						await assertExpectations()
-						await assertNoMultisigPresence(tx)
+						await customAsserts.assertExpectations()
+						await customAsserts.assertNoMultisigPresence(tx)
 					})
 				})
 			})
@@ -2092,12 +2113,12 @@ contract("User Workflow", accounts => {
 
 					it("should allow by original owner", async () => {
 						const tx = await userRouter.addThirdPartyOwner(users.remoteOwner1, { from: user, })
-						const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+						const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 
 						// confirmation
 						{
 							const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-							await assertMultisigExecutionPresence({
+							await customAsserts.assertMultisigExecutionPresence({
 								tx, transactionId, userRouter, oracle: users.oracle,
 							})
 						}
@@ -2118,7 +2139,7 @@ contract("User Workflow", accounts => {
 
 					it("should NOT allow by 3rd party owner", async () => {
 						const tx = await userRouter.addThirdPartyOwner(users.remoteOwner2, { from: users.remoteOwner1, })
-						await assertNoMultisigPresence(tx)
+						await customAsserts.assertNoMultisigPresence(tx)
 
 						assert.isFalse(await userRouter.isThirdPartyOwner.call(users.remoteOwner2), "Remote owner should not become a 3rd party owner")
 					})
@@ -2134,7 +2155,7 @@ contract("User Workflow", accounts => {
 						// setup
 						{
 							const tx = await userRouter.addThirdPartyOwner(users.remoteOwner1, { from: user, })
-							const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+							const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 							await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
 						}
 					})
@@ -2170,12 +2191,12 @@ contract("User Workflow", accounts => {
 
 					it("should allow by original owner", async () => {
 						const tx = await userRouter.revokeThirdPartyOwner(users.remoteOwner1, { from: user, })
-						const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+						const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 
 						// confirmation
 						{
 							const tx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
-							await assertMultisigExecutionPresence({
+							await customAsserts.assertMultisigExecutionPresence({
 								tx, transactionId, userRouter, oracle: users.oracle,
 							})
 						}
@@ -2183,7 +2204,7 @@ contract("User Workflow", accounts => {
 
 					it("should NOT allow unexisted 3rd party owner by original owner with 'ExecutionFailure' event emitted", async () => {
 						const tx = await userRouter.revokeThirdPartyOwner(users.remoteOwner1, { from: user, })
-						const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+						const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 
 						// confirmation
 						const confirmationTx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
@@ -2215,7 +2236,7 @@ contract("User Workflow", accounts => {
 						// setup
 						{
 							const tx = await userRouter.addThirdPartyOwner(remoteOwner, { from: user, })
-							const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user, })
+							const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user, })
 							await userRouter.confirmTransaction(transactionId, { from: users.oracle, })
 						}
 					})
@@ -2277,12 +2298,12 @@ contract("User Workflow", accounts => {
 							)
 
 							const tx = await userRouter.forward(contracts.mock.address, data, 0, true, { from: remoteOwner, }).then(r => r, assert.fail)
-							await assertExpectations(1, 0)
+							await customAsserts.assertExpectations(1, 0)
 
-							const transactionId = await assertMultisigSubmitPresence({ tx, userProxy, user: remoteOwner, })
+							const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy, user: remoteOwner, })
 							const confirmationTx = await userRouter.confirmTransaction(transactionId, { from: users.oracle, }).then(r => r, assert.fail)
-							await assertExpectations(0, 1)
-							await assertMultisigExecutionPresence({
+							await customAsserts.assertExpectations(0, 1)
+							await customAsserts.assertMultisigExecutionPresence({
 								tx: confirmationTx, transactionId, userRouter, oracle: users.oracle,
 							})
 						})
@@ -2318,8 +2339,8 @@ contract("User Workflow", accounts => {
 									signatureDetails.s,
 									{ from: remoteOwner, }
 								)
-								await assertExpectations(0, 1)
-								await assertNoMultisigPresence(tx)
+								await customAsserts.assertExpectations(0, 1)
+								await customAsserts.assertNoMultisigPresence(tx)
 							})
 						})
 					})
