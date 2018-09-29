@@ -27,7 +27,7 @@ contract TwoFactorAuthenticationSig is MultiSig {
         MultiSig._initMultiSig(_owners, _required);
     }
 
-    function _setOracle(address _oracle)
+    function _setOracleImpl(address _oracle)
     internal
     {
         require(_oracle != 0x0, "Oracle should not be equal to 0x0");

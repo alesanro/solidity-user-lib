@@ -58,14 +58,14 @@ contract ThirdPartyMultiSig is TwoFactorAuthenticationSig {
         }
     }
 
-    function _addThirdPartyOwner(address _owner) 
+    function _addThirdPartyOwnerImpl(address _owner) 
     internal 
     returns (uint) 
     {
         this.addOwner(_owner);
     }
 
-    function _revokeThirdPartyOwner(address _owner)
+    function _revokeThirdPartyOwnerImpl(address _owner)
     internal
     {
         require(isThirdPartyOwner(_owner), "THIRD_PARTY_MULTISIG_SHOULD_NOT_BE_OWNER_OR_ORACLE_ADDRESS");

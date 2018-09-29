@@ -49,8 +49,9 @@ contract Cashback {
         _result = G_VERYLOW + G_COPY * G_MEMORY * _calldatasize / BYTES_WORD_SIZE;
     }
 
-
-    function _estimateTxInputDataGas(uint _calldataPrefixLength) private pure returns (uint _result) {
+    event LogEstimated(uint _calldatasize, uint _result);
+    
+    function _estimateTxInputDataGas(uint _calldataPrefixLength) private returns (uint _result) {
         uint _calldatasize;
         assembly {
             _calldatasize := calldatasize
@@ -68,9 +69,11 @@ contract Cashback {
         WolframAlpha http://www.wolframalpha.com/input/?i=linear++%7B%7B640,+9909%7D,+%7B772,+10898%7D,+%7B1156,+13868%7D,+%7B548,+9167%7D,+%7B292,+7188%7D,+%7B132,+5969%7D,+%7B228,+6694%7D,+%7B68,+5475%7D%7D
         */
         _result = (772 * (_calldatasize - _calldataPrefixLength)) / 100 + 4944;
+
+        emit LogEstimated(_calldatasize, _result);
     }
     
-    function _getConstantGas(uint _calldataPrefixLength) private pure returns (uint) {
+    function _getConstantGas(uint _calldataPrefixLength) private returns (uint) {
         return TX_DEFAULT_PRICE + _estimateTxInputDataGas(_calldataPrefixLength) + ESTIMATION_CALCULATION_GAS + _getTransferCashbackEstimation();
     }
 

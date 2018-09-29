@@ -29,8 +29,21 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     uint constant ROUTER_DELEGATECALL_ESTIMATION = 1153;
     /// @dev gas taken before startCashbackEstimation() modifier by 'forward' function
     uint constant CASHBACK_FORWARD_BEFORE_ESTIMATION = 483; 
+    /// @dev gas taken before startCashbackEstimation() modifier by 'set2FA' function
+    uint constant CASHBACK_2FA_BEFORE_ESTIMATION = 352; 
+    /// @dev gas taken before startCashbackEstimation() modifier by 'setUserProxy' function
+    uint constant CASHBACK_USER_PROXY_BEFORE_ESTIMATION = 286; 
+    /// @dev gas taken before startCashbackEstimation() modifier by 'setOracle' function
+    uint constant CASHBACK_ORACLE_BEFORE_ESTIMATION = 286; 
+    /// @dev gas taken before startCashbackEstimation() modifier by 'addThirdPartyOwner' function
+    uint constant CASHBACK_ADD_THIRDPARTY_BEFORE_ESTIMATION = 286; 
+    /// @dev gas taken before startCashbackEstimation() modifier by 'revokeThirdPartyOwner' function
+    uint constant CASHBACK_REVOKE_THIRDPARTY_BEFORE_ESTIMATION = 286; 
+    /// @dev gas taken before startCashbackEstimation() modifier by 'setRecoveryContract' function
+    uint constant CASHBACK_RECOVERY_CONTRACT_BEFORE_ESTIMATION = 286; 
+
     /// @dev gas taken by _transferCashback modifier
-    uint constant CASHBACK_TRANSFER_ESTIMATION = 10421 + 250; // TODO: should add +250 more for getOracle() addition
+    uint constant CASHBACK_TRANSFER_ESTIMATION = 10421 + 250; // add +250 more for getOracle() addition
 
     uint constant MULTISIG_CONFIRMATION_ESTIMATION = 32967; // without calculation of getConfirmationCount
     uint constant MULTISIG_GET_CONFIRMATION_COUNT_BASE_ESTIMATION = 1200; // without calculation of getConfirmationCount
@@ -172,9 +185,26 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     /// @return result of an operation
     function set2FA(bool _enabled)
     external
+    returns (uint) 
+    {
+        return _cashbackSet2FA(_enabled);
+    }
+
+    uint constant CALLDATA_PREFIX_2FA_LENGTH = 28;
+
+    function _cashbackSet2FA(bool _enabled)
+    private
+    estimateCashbackAndPay(CALLDATA_PREFIX_2FA_LENGTH, CASHBACK_2FA_BEFORE_ESTIMATION)
+    returns (uint) 
+    {
+        return _set2FA(_enabled);
+    }
+
+    function _set2FA(bool _enabled)
     onlyCall
     onlyMultiowned(contractOwner)
-    returns (uint) 
+    private
+    returns (uint)
     {
         require(getOracle() != 0x0, "Oracle must be set before 2FA activation");
 
@@ -193,6 +223,23 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     /// @return result of an operation
     function setUserProxy(UserProxy _userProxy) 
     public 
+    returns (uint) 
+    {
+        return _cashbackSetUserProxy(_userProxy);
+    }
+
+    uint constant CALLDATA_PREFIX_USER_PROXY_LENGTH = 28;
+
+    function _cashbackSetUserProxy(UserProxy _userProxy) 
+    private 
+    estimateCashbackAndPay(CALLDATA_PREFIX_USER_PROXY_LENGTH, CASHBACK_USER_PROXY_BEFORE_ESTIMATION)
+    returns (uint) 
+    {
+        return _setUserProxy(_userProxy);
+    }
+
+    function _setUserProxy(UserProxy _userProxy) 
+    private 
     onlyCall
     onlyMultiowned(contractOwner)
     returns (uint) 
@@ -219,31 +266,84 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     /// @return result of an operation
     function setOracle(address _oracle)
     external
+    returns (uint)
+    {
+        return _cashbackSetOracle(_oracle, [uint(0)]);
+    }
+
+    uint constant CALLDATA_PREFIX_ORACLE_LENGTH = 28;
+
+    function _cashbackSetOracle(address _oracle, uint[1] _estimations)
+    private
+    estimateCashbackAndPay(CALLDATA_PREFIX_ORACLE_LENGTH, CASHBACK_ORACLE_BEFORE_ESTIMATION)
+    returns (uint _result)
+    {
+        return _setOracle(_oracle);
+    }
+
+    function _setOracle(address _oracle)
+    private
     onlyCall
     onlyMultiowned(contractOwner)
     returns (uint)
     {
-        _setOracle(_oracle);
+        _setOracleImpl(_oracle);
         return OK;
     }
 
+    /// @notice TODO:
     function addThirdPartyOwner(address _owner)
     external
+    returns (uint)
+    {
+        return _cashbackAddThirdPartyOwner(_owner);
+    }
+
+    uint constant CALLDATA_PREFIX_ADD_THIRDPARTY_LENGTH = 28;
+
+    function _cashbackAddThirdPartyOwner(address _owner)
+    private
+    estimateCashbackAndPay(CALLDATA_PREFIX_ADD_THIRDPARTY_LENGTH, CASHBACK_ADD_THIRDPARTY_BEFORE_ESTIMATION)
+    returns (uint)
+    {
+        return _addThirdPartyOwner(_owner);
+    }
+
+    function _addThirdPartyOwner(address _owner)
+    private
     onlyCall
     onlyMultiowned(contractOwner)
     returns (uint)
     {
-        _addThirdPartyOwner(_owner);
+        _addThirdPartyOwnerImpl(_owner);
         return OK;
     }
 
+    /// @notice TODO:
     function revokeThirdPartyOwner(address _owner)
     external
+    returns (uint)
+    {
+        return _cashbackRevokeThirdPartyOwner(_owner);
+    }
+
+    uint constant CALLDATA_PREFIX_REVOKE_THIRDPARTY_LENGTH = 28;
+
+    function _cashbackRevokeThirdPartyOwner(address _owner)
+    private
+    estimateCashbackAndPay(CALLDATA_PREFIX_REVOKE_THIRDPARTY_LENGTH, CASHBACK_REVOKE_THIRDPARTY_BEFORE_ESTIMATION)
+    returns (uint)
+    {
+        return _revokeThirdPartyOwner(_owner);
+    }
+
+    function _revokeThirdPartyOwner(address _owner)
+    private
     onlyCall
     onlyMultiowned(contractOwner)
     returns (uint)
     {
-        _revokeThirdPartyOwner(_owner);
+        _revokeThirdPartyOwnerImpl(_owner);
         return OK;
     }
 
@@ -272,6 +372,23 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     /// @return result of an operation
     function setRecoveryContract(address _recoveryContract) 
     public 
+    returns (uint) 
+    {
+        return _cashbackSetRecoveryContract(_recoveryContract);
+    }
+
+    uint constant CALLDATA_PREFIX_RECOVERY_CONTRACT_LENGTH = 28;
+
+    function _cashbackSetRecoveryContract(address _recoveryContract) 
+    private 
+    estimateCashbackAndPay(CALLDATA_PREFIX_RECOVERY_CONTRACT_LENGTH, CASHBACK_RECOVERY_CONTRACT_BEFORE_ESTIMATION)
+    returns (uint) 
+    {
+        return _setRecoveryContract(_recoveryContract);
+    }
+
+    function _setRecoveryContract(address _recoveryContract) 
+    private 
     onlyCall
     onlyMultiowned(contractOwner)
     returns (uint) 
@@ -330,12 +447,12 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     public
     returns (bytes32) 
     {
-        return _multisigForward(_destination, _data, _value, _throwOnFailedCall);
+        return _cashbackForward(_destination, _data, _value, _throwOnFailedCall);
     }
 
     uint constant CALLDATA_PREFIX_FORWARD_LENGTH = 220;
 
-    function _multisigForward(
+    function _cashbackForward(
         address _destination,
         bytes _data,
         uint _value,
