@@ -2592,69 +2592,6 @@ contract.only("User ('forward' cashback)", accounts => {
 				await userAccount.router.set2FA(true, { from: userAccount.address, })
 			})
 
-			const data = [
-				{
-					getDescription: () => `${'userBackend.getUserProxy()'}`,
-					getData: () => contracts.userBackend.contract.getUserProxy.getData(),
-				},
-				{
-					getDescription: () => `${'userBackend.setUserProxy(address)'}`,
-					getData: () => contracts.userBackend.contract.setUserProxy.getData(fakeAddress),
-				},
-				{
-					getDescription: () => `${'userBackend.set2FA(bool)'}`,
-					getData: () => contracts.userBackend.contract.set2FA.getData(true),
-				},
-				{
-					getDescription: () => `${'userBackend.forwardWithVRS(...) with almost empty data'}`,
-					getData: () => contracts.userBackend.contract.forwardWithVRS.getData(fakeAddress, contracts.userBackend.contract.setRecoveryContract.getData(fakeAddress), 0, false, "0x44ee", 1, "0x44ee", "0x44ee"),
-				},
-				{
-					getDescription: () => `${'rolesLibrary.setRootUser(address)'}`,
-					getData: () => contracts.rolesLibrary.contract.setRootUser.getData(fakeAccountAddress, true),
-				},
-				{
-					getDescription: () => `${'rolesLibrary.setPublicCapability(address,bytes4,bool)'}`,
-					getData: () => contracts.rolesLibrary.contract.setPublicCapability.getData(fakeAddress, "0xbb11bb", true),
-				},
-				{
-					getDescription: () => `${'userRegistry.removeUserContractFrom(address,address)'}`,
-					getData: () => contracts.userRegistry.contract.removeUserContractFrom.getData(fakeAddress, fakeAccountAddress),
-				},
-				{
-					getDescription: () => `${'fakeInterface.postJobInBoard(uint,uint,uint,uint,uint,bytes32,uint)'}`,
-					getData: () => contracts.fakeInterface.contract.postJobInBoard.getData(12,4,3,2,100000000,"0xeeeeeeffffffaaaaaaaacccccccccc",43),
-				},
-				{
-					getDescription: () => `${'fakeInterface.postJobOffer(uint,uint,uint,uint)'}`,
-					getData: () => contracts.fakeInterface.contract.postJobOffer.getData(12,100000000,1000,200000000),
-				},
-				{
-					getDescription: () => `${'fakeInterface.transferWithFee(address,address,uint,uint)'}`,
-					getData: () => contracts.fakeInterface.contract.transferWithFee.getData(fakeAddress,fakeAccountAddress,23,43),
-				},
-				{
-					getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - short'}`,
-					getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,],[23,],2,100023242),
-				},
-				{
-					getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - medium'}`,
-					getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,],[23,23,23,23,23,],2,100023242),
-				},
-				{
-					getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - long'}`,
-					getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,],[23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,],2,100023242),
-				},
-				{
-					getDescription: () => `${'fakeInterface.rateWorkerSkills(uint,address,uint,uint,uint[],uint8[]) - medium'}`,
-					getData: () => contracts.fakeInterface.contract.rateWorkerSkills.getData(1883729878287234,fakeAddress,2828237987942,20029328492348298,[89279872,234234,2342,3534534534,345345304980980292345,2345234532452345,],[10,9,8,7,6,3,5,6,7,8]),
-				},
-				{
-					getDescription: () => `${'fakeInterface.evaluateMany(address,uint,uint[],uint[],uint8[]) - short'}`,
-					getData: () => contracts.fakeInterface.contract.evaluateMany.getData(fakeAddress,897293847234,[2239234,234,23423423,11121212,],[2239234,234,23423423,11121212,],[22,55,11,111,]),
-				},
-			]
-
 			const thirdPartyOwners = [
 				[],
 				[ users.user2, ],
@@ -2663,11 +2600,246 @@ contract.only("User ('forward' cashback)", accounts => {
 				[ users.user2, users.user3, users.remoteOwner1, users.remoteOwner2, ],
 				[ users.user2, users.user3, users.remoteOwner1, users.remoteOwner2, users.recovery, ],
 			]
+
+			{
+				const data = [
+					{
+						getDescription: () => `${'userBackend.getUserProxy()'}`,
+						getData: () => contracts.userBackend.contract.getUserProxy.getData(),
+					},
+					{
+						getDescription: () => `${'userBackend.setUserProxy(address)'}`,
+						getData: () => contracts.userBackend.contract.setUserProxy.getData(fakeAddress),
+					},
+					{
+						getDescription: () => `${'userBackend.set2FA(bool)'}`,
+						getData: () => contracts.userBackend.contract.set2FA.getData(true),
+					},
+					{
+						getDescription: () => `${'userBackend.forwardWithVRS(...) with almost empty data'}`,
+						getData: () => contracts.userBackend.contract.forwardWithVRS.getData(fakeAddress, contracts.userBackend.contract.setRecoveryContract.getData(fakeAddress), 0, false, "0x44ee", 1, "0x44ee", "0x44ee"),
+					},
+					{
+						getDescription: () => `${'rolesLibrary.setRootUser(address)'}`,
+						getData: () => contracts.rolesLibrary.contract.setRootUser.getData(fakeAccountAddress, true),
+					},
+					{
+						getDescription: () => `${'rolesLibrary.setPublicCapability(address,bytes4,bool)'}`,
+						getData: () => contracts.rolesLibrary.contract.setPublicCapability.getData(fakeAddress, "0xbb11bb", true),
+					},
+					{
+						getDescription: () => `${'userRegistry.removeUserContractFrom(address,address)'}`,
+						getData: () => contracts.userRegistry.contract.removeUserContractFrom.getData(fakeAddress, fakeAccountAddress),
+					},
+					{
+						getDescription: () => `${'fakeInterface.postJobInBoard(uint,uint,uint,uint,uint,bytes32,uint)'}`,
+						getData: () => contracts.fakeInterface.contract.postJobInBoard.getData(12,4,3,2,100000000,"0xeeeeeeffffffaaaaaaaacccccccccc",43),
+					},
+					{
+						getDescription: () => `${'fakeInterface.postJobOffer(uint,uint,uint,uint)'}`,
+						getData: () => contracts.fakeInterface.contract.postJobOffer.getData(12,100000000,1000,200000000),
+					},
+					{
+						getDescription: () => `${'fakeInterface.transferWithFee(address,address,uint,uint)'}`,
+						getData: () => contracts.fakeInterface.contract.transferWithFee.getData(fakeAddress,fakeAccountAddress,23,43),
+					},
+					{
+						getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - short'}`,
+						getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,],[23,],2,100023242),
+					},
+					{
+						getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - medium'}`,
+						getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,],[23,23,23,23,23,],2,100023242),
+					},
+					{
+						getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - long'}`,
+						getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,],[23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,],2,100023242),
+					},
+					{
+						getDescription: () => `${'fakeInterface.rateWorkerSkills(uint,address,uint,uint,uint[],uint8[]) - medium'}`,
+						getData: () => contracts.fakeInterface.contract.rateWorkerSkills.getData(1883729878287234,fakeAddress,2828237987942,20029328492348298,[89279872,234234,2342,3534534534,345345304980980292345,2345234532452345,],[10,9,8,7,6,3,5,6,7,8]),
+					},
+					{
+						getDescription: () => `${'fakeInterface.evaluateMany(address,uint,uint[],uint[],uint8[]) - short'}`,
+						getData: () => contracts.fakeInterface.contract.evaluateMany.getData(fakeAddress,897293847234,[2239234,234,23423423,11121212,],[2239234,234,23423423,11121212,],[22,55,11,111,]),
+					},
+				]
+				
+				for (const dataTemp of data) {
+					for (const thirdpartiesTemp of thirdPartyOwners) {
+						const dataItem = dataTemp
+						const thirdparties = thirdpartiesTemp
+
+						describe(`invocation with dataItem ${dataItem.getDescription()} with ${thirdparties.length} thirdparty`, () => {
+							let data
+							let initTx
+							let transactionId
+							let confirmTx
+							let snapshotId
+
+							const sentEther = web3.toWei("1", "ether")
+							let proxyBalanceBefore
+							let oracleBalanceBefore
+
+							before(async () => {
+								await reverter.promisifySnapshot()
+								snapshotId = reverter.snapshotId
+
+								for (const thirdpartyOwner of thirdparties) {
+									const tx = await userAccount.router.addThirdPartyOwner(thirdpartyOwner, { from: userAccount.address, })
+									const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy: userAccount.proxy, user: userAccount.address, })
+									await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+								}
+
+								data = dataItem.getData()
+								{
+									const { external: inputDataExternalGas, contract: customInputDataGas, } = bytesChecker.inputDataGas(data.slice(2))
+									const { length: totalBytes, nonZeroBytes, } = bytesChecker.countBytesInString(data.slice(2))
+									console.log(`
+									Data:
+									# input data calc: ${inputDataExternalGas}
+									# contract input data calc: ${customInputDataGas}
+									# total bytes: ${totalBytes} / ${nonZeroBytes}
+									`)
+								}
+								await contracts.mock.expect(
+									userAccount.proxyAddress,
+									0,
+									data,
+									customReturn
+								)
+
+								await asyncWeb3.sendEth({ from: userAccount.address, to: userAccount.proxyAddress, value: sentEther, })
+								proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+								oracleBalanceBefore = await asyncWeb3.getEthBalance(users.oracle)
+							})
+
+							after(async () => {
+								await reverter.promisifyRevert(snapshotId)
+							})
 			
-			for (const dataItem of data) {
-				for (const thirdparties of thirdPartyOwners) {
-					describe(`invocation with dataItem ${dataItem.getDescription()} with ${thirdparties.length} thirdparty`, () => {
-						let data
+							it("should NOT have a payment for initial 'forward", async () => {
+								initTx = await userAccount.router.forward(contracts.mock.address, data, 0, true, { from: userAccount.address, })
+								await customAsserts.assertExpectations(1, 0)
+								transactionId = await customAsserts.assertMultisigSubmitPresence({ tx: initTx, userProxy: userAccount.proxy, user: userAccount.address, })
+							})
+			
+							it("should have a payment after oracle's confirmation", async () => {
+								confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+								await customAsserts.assertMultisigExecutionPresence({
+									tx: confirmTx,
+									transactionId,
+									userRouter: userAccount.router,
+									oracle: users.oracle,
+								})
+								await customAsserts.assertExpectations(0, 1)
+							})
+			
+							it("should have payed back results", async () => {
+								const fullTx = await asyncWeb3.getTx(confirmTx.tx)
+								const txRealGas = (await asyncWeb3.getTxReceipt(confirmTx.tx)).gasUsed
+								const txRealExpenses = await asyncWeb3.getTxExpences(confirmTx.tx)
+								const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+								const oracleBalanceAfter = await asyncWeb3.getEthBalance(users.oracle)
+
+								const cashbackValue = await proxyBalanceBefore.sub(proxyBalanceAfter)
+								const cashbackGas = cashbackValue.div(fullTx.gasPrice)
+								const cashbackOverpricedAbsolute = cashbackValue.sub(txRealExpenses)
+								const cashbackOverpricedPercent = cashbackOverpricedAbsolute.div(txRealExpenses).mul(100)
+
+								console.log(`
+								# - gas price: ${fullTx.gasPrice}
+								# - gas used: ${txRealGas}
+								# - gas calculated: ${cashbackGas.toNumber()}
+								# - % of overpayment: ${cashbackOverpricedPercent.toNumber().toFixed(2)}
+								# - absolute overpayment: ${cashbackGas.sub(txRealGas).toNumber()}
+								# - oracle received back: ${web3.fromWei((oracleBalanceAfter.sub(oracleBalanceBefore)), "ether")}
+								`)
+								// # Before:
+								// # - proxy balance: ${proxyBalanceBefore.toString()}
+								// # - oracle balance: ${oracleBalanceBefore.toString()}
+								// # --------
+								// # - real tx expenses: ${txRealExpenses.toString()}
+								// # - cashback value: ${cashbackValue.toString()}
+								// # - earning by oracle: ${oracleBalanceAfter.sub(oracleBalanceBefore).toString()}
+
+								assert.isAtLeast(cashbackValue.toNumber(), txRealExpenses.toNumber(), "Cashback doesn't cover tx expenses of an oracle")
+								assert.isAtMost(cashbackOverpricedPercent.toNumber(), 0.1, `Cashback shouldn't exceed real expenses more than for max percent`)
+								assert.isAtMost(cashbackGas.sub(txRealGas).toNumber(), 200, `Cashback return gas shouldn't exceed spent gas greater than on 200 gas`)
+							})
+						})
+					}
+				}
+			}
+
+			///
+
+			{
+				const data = [
+					{
+						id: 1,
+						description: `userInterface.set2FA(bool)`,
+						executeInitial: async () => {
+							return await userAccount.router.set2FA(false, { from: userAccount.address, })
+						},
+						getData: () => userAccount.router.contract.set2FA.getData(false),
+					},
+					{
+						id: 2,
+						description: `userInterface.setOracle(address)`,
+						executeInitial: async () => {
+							return await userAccount.router.setOracle(fakeAccountAddress, { from: userAccount.address, })
+						},
+						getData: () => userAccount.router.contract.setOracle.getData(fakeAccountAddress),
+					},
+					// {
+					// 	id: 3,
+					// 	description: `userInterface.setUserProxy(address)`,
+					// 	executeInitial: async () => {
+					// 		return await userAccount.router.setUserProxy(fakeAddress, { from: userAccount.address, })
+					// 	},
+					// 	getData: () => userAccount.router.contract.setUserProxy.getData(fakeAddress),
+					// },
+					{
+						id: 4,
+						description: `userInterface.addThirdPartyOwner(address)`,
+						executeInitial: async () => {
+							return await userAccount.router.addThirdPartyOwner(fakeAddress, { from: userAccount.address, })
+						},
+						getData: () => userAccount.router.contract.addThirdPartyOwner.getData(fakeAddress),
+					},
+					{
+						id: 5,
+						description: `userInterface.revokeThirdPartyOwner(address)`,
+						executeInitial: async () => {
+							{
+								const initTx = await userAccount.router.addThirdPartyOwner(fakeAddress, { from: userAccount.address, })
+								const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx: initTx, userProxy: userAccount.proxy, user: userAccount.address, })
+								const confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+								await customAsserts.assertMultisigExecutionPresence({
+									tx: confirmTx,
+									transactionId,
+									userRouter: userAccount.router,
+									oracle: users.oracle,
+								})
+							}
+							return await userAccount.router.revokeThirdPartyOwner(fakeAddress, { from: userAccount.address, })
+						},
+						getData: () => userAccount.router.contract.revokeThirdPartyOwner.getData(fakeAddress),
+					},
+					{
+						id: 6,
+						description: `userInterface.setRecoveryContract(address)`,
+						executeInitial: async () => {
+							return await userAccount.router.setRecoveryContract(fakeAccountAddress, { from: userAccount.address, })
+						},
+						getData: () => userAccount.router.contract.setRecoveryContract.getData(fakeAccountAddress),
+					},
+				]
+
+				for (const dataItem of data) {
+					describe.only(`userBackend methods ${dataItem.id} for ${dataItem.description}`, () => {
+						const injectedDataItem = dataItem
 						let initTx
 						let transactionId
 						let confirmTx
@@ -2681,13 +2853,13 @@ contract.only("User ('forward' cashback)", accounts => {
 							await reverter.promisifySnapshot()
 							snapshotId = reverter.snapshotId
 
-							for (const thirdpartyOwner of thirdparties) {
-								const tx = await userAccount.router.addThirdPartyOwner(thirdpartyOwner, { from: userAccount.address, })
-								const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy: userAccount.proxy, user: userAccount.address, })
-								await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
-							}
+							// for (const thirdpartyOwner of thirdparties) {
+							// 	const tx = await userAccount.router.addThirdPartyOwner(thirdpartyOwner, { from: userAccount.address, })
+							// 	const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy: userAccount.proxy, user: userAccount.address, })
+							// 	await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+							// }
 
-							data = dataItem.getData()
+							const data = injectedDataItem.getData()
 							{
 								const { external: inputDataExternalGas, contract: customInputDataGas, } = bytesChecker.inputDataGas(data.slice(2))
 								const { length: totalBytes, nonZeroBytes, } = bytesChecker.countBytesInString(data.slice(2))
@@ -2698,51 +2870,45 @@ contract.only("User ('forward' cashback)", accounts => {
 								# total bytes: ${totalBytes} / ${nonZeroBytes}
 								`)
 							}
-							await contracts.mock.expect(
-								userAccount.proxyAddress,
-								0,
-								data,
-								customReturn
-							)
 
 							await asyncWeb3.sendEth({ from: userAccount.address, to: userAccount.proxyAddress, value: sentEther, })
-							proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
-							oracleBalanceBefore = await asyncWeb3.getEthBalance(users.oracle)
 						})
-
+						
 						after(async () => {
 							await reverter.promisifyRevert(snapshotId)
 						})
-		
-						it("should NOT have a payment for initial 'forward", async () => {
-							initTx = await userAccount.router.forward(contracts.mock.address, data, 0, true, { from: userAccount.address, })
-							await customAsserts.assertExpectations(1, 0)
+						
+						it("initial invocation is successful", async () => {
+							initTx = await injectedDataItem.executeInitial()
 							transactionId = await customAsserts.assertMultisigSubmitPresence({ tx: initTx, userProxy: userAccount.proxy, user: userAccount.address, })
+							
+							proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+							oracleBalanceBefore = await asyncWeb3.getEthBalance(users.oracle)
 						})
-		
-						it("should have a payment after oracle's confirmation", async () => {
-							confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, }).then(r => r, assert.fail)
+						
+						it("should have a payment after oracle's confirmation ", async () => {
+							confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
 							await customAsserts.assertMultisigExecutionPresence({
 								tx: confirmTx,
 								transactionId,
 								userRouter: userAccount.router,
 								oracle: users.oracle,
 							})
-							await customAsserts.assertExpectations(0, 1)
 						})
-		
+						
 						it("should have payed back results", async () => {
 							const fullTx = await asyncWeb3.getTx(confirmTx.tx)
 							const txRealGas = (await asyncWeb3.getTxReceipt(confirmTx.tx)).gasUsed
 							const txRealExpenses = await asyncWeb3.getTxExpences(confirmTx.tx)
 							const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
 							const oracleBalanceAfter = await asyncWeb3.getEthBalance(users.oracle)
-
+	
 							const cashbackValue = await proxyBalanceBefore.sub(proxyBalanceAfter)
 							const cashbackGas = cashbackValue.div(fullTx.gasPrice)
 							const cashbackOverpricedAbsolute = cashbackValue.sub(txRealExpenses)
 							const cashbackOverpricedPercent = cashbackOverpricedAbsolute.div(txRealExpenses).mul(100)
-
+	
+							const event = (await eventHelpers.findEvent([userAccount.router, contracts.userBackend,], confirmTx, "LogEstimated"))[0]
 							console.log(`
 							# - gas price: ${fullTx.gasPrice}
 							# - gas used: ${txRealGas}
@@ -2750,6 +2916,7 @@ contract.only("User ('forward' cashback)", accounts => {
 							# - % of overpayment: ${cashbackOverpricedPercent.toNumber().toFixed(2)}
 							# - absolute overpayment: ${cashbackGas.sub(txRealGas).toNumber()}
 							# - oracle received back: ${web3.fromWei((oracleBalanceAfter.sub(oracleBalanceBefore)), "ether")}
+							### log estimated: ${event.args._calldatasize} / ${event.args._result}
 							`)
 							// # Before:
 							// # - proxy balance: ${proxyBalanceBefore.toString()}
@@ -2758,12 +2925,14 @@ contract.only("User ('forward' cashback)", accounts => {
 							// # - real tx expenses: ${txRealExpenses.toString()}
 							// # - cashback value: ${cashbackValue.toString()}
 							// # - earning by oracle: ${oracleBalanceAfter.sub(oracleBalanceBefore).toString()}
-
+	
 							assert.isAtLeast(cashbackValue.toNumber(), txRealExpenses.toNumber(), "Cashback doesn't cover tx expenses of an oracle")
-							assert.isAtMost(cashbackOverpricedPercent.toNumber(), 20, `Cashback shouldn't exceed real expenses more than for max percent`)
+							assert.isAtMost(cashbackOverpricedPercent.toNumber(), 0.1, `Cashback shouldn't exceed real expenses more than for max percent`)
+							assert.isAtMost(cashbackGas.sub(txRealGas).toNumber(), 200, `Cashback return gas shouldn't exceed spent gas greater than on 200 gas`)
 						})
 					})
 				}
+
 			}
 
 			describe("no ETH on proxy's address", () => {
