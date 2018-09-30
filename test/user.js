@@ -2411,7 +2411,7 @@ contract("User Workflow", accounts => {
 })
 
 
-contract.only("User ('forward' cashback)", accounts => {
+contract("User ('forward' cashback)", accounts => {
 	const reverter = new Reverter(web3)
 	const { users, } = getUsers(accounts)
 	const asyncWeb3 = new AsyncWeb3(web3)
@@ -2670,7 +2670,7 @@ contract.only("User ('forward' cashback)", accounts => {
 						const dataItem = dataTemp
 						const thirdparties = thirdpartiesTemp
 
-						describe(`invocation with dataItem ${dataItem.getDescription()} with ${thirdparties.length} thirdparty`, () => {
+						describe(`invocation with dataItem ${dataItem.getDescription()} with thirdparties.count = ${thirdparties.length}`, () => {
 							let data
 							let initTx
 							let transactionId
@@ -2685,23 +2685,15 @@ contract.only("User ('forward' cashback)", accounts => {
 								await reverter.promisifySnapshot()
 								snapshotId = reverter.snapshotId
 
+								await asyncWeb3.sendEth({ from: userAccount.address, to: userAccount.proxyAddress, value: sentEther, })
+
 								for (const thirdpartyOwner of thirdparties) {
 									const tx = await userAccount.router.addThirdPartyOwner(thirdpartyOwner, { from: userAccount.address, })
 									const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy: userAccount.proxy, user: userAccount.address, })
-									await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+									await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, gas: 400000, })
 								}
 
 								data = dataItem.getData()
-								{
-									const { external: inputDataExternalGas, contract: customInputDataGas, } = bytesChecker.inputDataGas(data.slice(2))
-									const { length: totalBytes, nonZeroBytes, } = bytesChecker.countBytesInString(data.slice(2))
-									console.log(`
-									Data:
-									# input data calc: ${inputDataExternalGas}
-									# contract input data calc: ${customInputDataGas}
-									# total bytes: ${totalBytes} / ${nonZeroBytes}
-									`)
-								}
 								await contracts.mock.expect(
 									userAccount.proxyAddress,
 									0,
@@ -2709,7 +2701,6 @@ contract.only("User ('forward' cashback)", accounts => {
 									customReturn
 								)
 
-								await asyncWeb3.sendEth({ from: userAccount.address, to: userAccount.proxyAddress, value: sentEther, })
 								proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
 								oracleBalanceBefore = await asyncWeb3.getEthBalance(users.oracle)
 							})
@@ -2725,7 +2716,7 @@ contract.only("User ('forward' cashback)", accounts => {
 							})
 			
 							it("should have a payment after oracle's confirmation", async () => {
-								confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+								confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, gas: 400000, })
 								await customAsserts.assertMultisigExecutionPresence({
 									tx: confirmTx,
 									transactionId,
@@ -2747,20 +2738,21 @@ contract.only("User ('forward' cashback)", accounts => {
 								const cashbackOverpricedAbsolute = cashbackValue.sub(txRealExpenses)
 								const cashbackOverpricedPercent = cashbackOverpricedAbsolute.div(txRealExpenses).mul(100)
 
-								console.log(`
-								# - gas price: ${fullTx.gasPrice}
-								# - gas used: ${txRealGas}
-								# - gas calculated: ${cashbackGas.toNumber()}
-								# - % of overpayment: ${cashbackOverpricedPercent.toNumber().toFixed(2)}
-								# - absolute overpayment: ${cashbackGas.sub(txRealGas).toNumber()}
-								# - oracle received back: ${web3.fromWei((oracleBalanceAfter.sub(oracleBalanceBefore)), "ether")}
-								`)
+								// console.log(`
+								// # - gas used: ${txRealGas}
+								// # - gas calculated: ${cashbackGas.toNumber()}
+								// # - absolute overpayment: ${cashbackGas.sub(txRealGas).toNumber()}
+								// `)
+
 								// # Before:
+								// # - gas price: ${fullTx.gasPrice}
 								// # - proxy balance: ${proxyBalanceBefore.toString()}
 								// # - oracle balance: ${oracleBalanceBefore.toString()}
 								// # --------
 								// # - real tx expenses: ${txRealExpenses.toString()}
 								// # - cashback value: ${cashbackValue.toString()}
+								// # - % of overpayment: ${cashbackOverpricedPercent.toNumber().toFixed(2)}
+								// # - oracle received back: ${web3.fromWei((oracleBalanceAfter.sub(oracleBalanceBefore)), "ether")}
 								// # - earning by oracle: ${oracleBalanceAfter.sub(oracleBalanceBefore).toString()}
 
 								assert.isAtLeast(cashbackValue.toNumber(), txRealExpenses.toNumber(), "Cashback doesn't cover tx expenses of an oracle")
@@ -2792,14 +2784,17 @@ contract.only("User ('forward' cashback)", accounts => {
 						},
 						getData: () => userAccount.router.contract.setOracle.getData(fakeAccountAddress),
 					},
-					// {
-					// 	id: 3,
-					// 	description: `userInterface.setUserProxy(address)`,
-					// 	executeInitial: async () => {
-					// 		return await userAccount.router.setUserProxy(fakeAddress, { from: userAccount.address, })
-					// 	},
-					// 	getData: () => userAccount.router.contract.setUserProxy.getData(fakeAddress),
-					// },
+					{
+						id: 3,
+						description: `userInterface.setUserProxy(address)`,
+						executeInitial: async () => {
+							const newProxy = await UserProxy.new({ from: userAccount.address, })
+							await newProxy.transferOwnership(userAccount.routerAddress, { from: userAccount.address, })
+
+							return await userAccount.router.setUserProxy(newProxy.address, { from: userAccount.address, })
+						},
+						getData: () => userAccount.router.contract.setUserProxy.getData(fakeAddress),
+					},
 					{
 						id: 4,
 						description: `userInterface.addThirdPartyOwner(address)`,
@@ -2838,99 +2833,88 @@ contract.only("User ('forward' cashback)", accounts => {
 				]
 
 				for (const dataItem of data) {
-					describe.only(`userBackend methods ${dataItem.id} for ${dataItem.description}`, () => {
-						const injectedDataItem = dataItem
-						let initTx
-						let transactionId
-						let confirmTx
-						let snapshotId
+					for (const thirdparties of thirdPartyOwners) {
+						describe(`userBackend methods for ${dataItem.description} with thirdparty.count = ${thirdparties.length}`, () => {
+							const injectedDataItem = dataItem
+							let initTx
+							let transactionId
+							let confirmTx
+							let snapshotId
 
-						const sentEther = web3.toWei("1", "ether")
-						let proxyBalanceBefore
-						let oracleBalanceBefore
+							const sentEther = web3.toWei("1", "ether")
+							let proxyBalanceBefore
+							let oracleBalanceBefore
 
-						before(async () => {
-							await reverter.promisifySnapshot()
-							snapshotId = reverter.snapshotId
+							before(async () => {
+								await reverter.promisifySnapshot()
+								snapshotId = reverter.snapshotId
+								
+								await asyncWeb3.sendEth({ from: userAccount.address, to: userAccount.proxyAddress, value: sentEther, })
 
-							// for (const thirdpartyOwner of thirdparties) {
-							// 	const tx = await userAccount.router.addThirdPartyOwner(thirdpartyOwner, { from: userAccount.address, })
-							// 	const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy: userAccount.proxy, user: userAccount.address, })
-							// 	await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
-							// }
-
-							const data = injectedDataItem.getData()
-							{
-								const { external: inputDataExternalGas, contract: customInputDataGas, } = bytesChecker.inputDataGas(data.slice(2))
-								const { length: totalBytes, nonZeroBytes, } = bytesChecker.countBytesInString(data.slice(2))
-								console.log(`
-								Data:
-								# input data calc: ${inputDataExternalGas}
-								# contract input data calc: ${customInputDataGas}
-								# total bytes: ${totalBytes} / ${nonZeroBytes}
-								`)
-							}
-
-							await asyncWeb3.sendEth({ from: userAccount.address, to: userAccount.proxyAddress, value: sentEther, })
-						})
-						
-						after(async () => {
-							await reverter.promisifyRevert(snapshotId)
-						})
-						
-						it("initial invocation is successful", async () => {
-							initTx = await injectedDataItem.executeInitial()
-							transactionId = await customAsserts.assertMultisigSubmitPresence({ tx: initTx, userProxy: userAccount.proxy, user: userAccount.address, })
+								for (const thirdpartyOwner of thirdparties) {
+									const tx = await userAccount.router.addThirdPartyOwner(thirdpartyOwner, { from: userAccount.address, })
+									const transactionId = await customAsserts.assertMultisigSubmitPresence({ tx, userProxy: userAccount.proxy, user: userAccount.address, })
+									await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+								}
+							})
 							
-							proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
-							oracleBalanceBefore = await asyncWeb3.getEthBalance(users.oracle)
-						})
-						
-						it("should have a payment after oracle's confirmation ", async () => {
-							confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
-							await customAsserts.assertMultisigExecutionPresence({
-								tx: confirmTx,
-								transactionId,
-								userRouter: userAccount.router,
-								oracle: users.oracle,
+							after(async () => {
+								await reverter.promisifyRevert(snapshotId)
+							})
+							
+							it("initial invocation is successful", async () => {
+								initTx = await injectedDataItem.executeInitial()
+								transactionId = await customAsserts.assertMultisigSubmitPresence({ tx: initTx, userProxy: userAccount.proxy, user: userAccount.address, })
+								
+								proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+								oracleBalanceBefore = await asyncWeb3.getEthBalance(users.oracle)
+							})
+							
+							it("should have a payment after oracle's confirmation ", async () => {
+								confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
+								await customAsserts.assertMultisigExecutionPresence({
+									tx: confirmTx,
+									transactionId,
+									userRouter: userAccount.router,
+									oracle: users.oracle,
+								})
+							})
+							
+							it("should have payed back results", async () => {
+								const fullTx = await asyncWeb3.getTx(confirmTx.tx)
+								const txRealGas = (await asyncWeb3.getTxReceipt(confirmTx.tx)).gasUsed
+								const txRealExpenses = await asyncWeb3.getTxExpences(confirmTx.tx)
+								const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
+								const oracleBalanceAfter = await asyncWeb3.getEthBalance(users.oracle)
+		
+								const cashbackValue = await proxyBalanceBefore.sub(proxyBalanceAfter)
+								const cashbackGas = cashbackValue.div(fullTx.gasPrice)
+								const cashbackOverpricedAbsolute = cashbackValue.sub(txRealExpenses)
+								const cashbackOverpricedPercent = cashbackOverpricedAbsolute.div(txRealExpenses).mul(100)
+
+								// console.log(`
+								// # - gas used: ${txRealGas}
+								// # - gas calculated: ${cashbackGas.toNumber()}
+								// # - absolute overpayment: ${cashbackGas.sub(txRealGas).toNumber()}
+								// `)
+
+								// # Before:
+								// # - gas price: ${fullTx.gasPrice}
+								// # - proxy balance: ${proxyBalanceBefore.toString()}
+								// # - oracle balance: ${oracleBalanceBefore.toString()}
+								// # --------
+								// # - real tx expenses: ${txRealExpenses.toString()}
+								// # - % of overpayment: ${cashbackOverpricedPercent.toNumber().toFixed(2)}
+								// # - cashback value: ${cashbackValue.toString()}
+								// # - oracle received back: ${web3.fromWei((oracleBalanceAfter.sub(oracleBalanceBefore)), "ether")}
+								// # - earning by oracle: ${oracleBalanceAfter.sub(oracleBalanceBefore).toString()}
+		
+								assert.isAtLeast(cashbackValue.toNumber(), txRealExpenses.toNumber(), "Cashback doesn't cover tx expenses of an oracle")
+								assert.isAtMost(cashbackOverpricedPercent.toNumber(), 0.1, `Cashback shouldn't exceed real expenses more than for max percent`)
+								assert.isAtMost(cashbackGas.sub(txRealGas).toNumber(), 200, `Cashback return gas shouldn't exceed spent gas greater than on 200 gas`)
 							})
 						})
-						
-						it("should have payed back results", async () => {
-							const fullTx = await asyncWeb3.getTx(confirmTx.tx)
-							const txRealGas = (await asyncWeb3.getTxReceipt(confirmTx.tx)).gasUsed
-							const txRealExpenses = await asyncWeb3.getTxExpences(confirmTx.tx)
-							const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
-							const oracleBalanceAfter = await asyncWeb3.getEthBalance(users.oracle)
-	
-							const cashbackValue = await proxyBalanceBefore.sub(proxyBalanceAfter)
-							const cashbackGas = cashbackValue.div(fullTx.gasPrice)
-							const cashbackOverpricedAbsolute = cashbackValue.sub(txRealExpenses)
-							const cashbackOverpricedPercent = cashbackOverpricedAbsolute.div(txRealExpenses).mul(100)
-	
-							const event = (await eventHelpers.findEvent([userAccount.router, contracts.userBackend,], confirmTx, "LogEstimated"))[0]
-							console.log(`
-							# - gas price: ${fullTx.gasPrice}
-							# - gas used: ${txRealGas}
-							# - gas calculated: ${cashbackGas.toNumber()}
-							# - % of overpayment: ${cashbackOverpricedPercent.toNumber().toFixed(2)}
-							# - absolute overpayment: ${cashbackGas.sub(txRealGas).toNumber()}
-							# - oracle received back: ${web3.fromWei((oracleBalanceAfter.sub(oracleBalanceBefore)), "ether")}
-							### log estimated: ${event.args._calldatasize} / ${event.args._result}
-							`)
-							// # Before:
-							// # - proxy balance: ${proxyBalanceBefore.toString()}
-							// # - oracle balance: ${oracleBalanceBefore.toString()}
-							// # --------
-							// # - real tx expenses: ${txRealExpenses.toString()}
-							// # - cashback value: ${cashbackValue.toString()}
-							// # - earning by oracle: ${oracleBalanceAfter.sub(oracleBalanceBefore).toString()}
-	
-							assert.isAtLeast(cashbackValue.toNumber(), txRealExpenses.toNumber(), "Cashback doesn't cover tx expenses of an oracle")
-							assert.isAtMost(cashbackOverpricedPercent.toNumber(), 0.1, `Cashback shouldn't exceed real expenses more than for max percent`)
-							assert.isAtMost(cashbackGas.sub(txRealGas).toNumber(), 200, `Cashback return gas shouldn't exceed spent gas greater than on 200 gas`)
-						})
-					})
+					}
 				}
 
 			}
@@ -2940,7 +2924,6 @@ contract.only("User ('forward' cashback)", accounts => {
 				let snapshotId
 				let initTx
 				let transactionId
-				let confirmTx
 
 				let proxyBalanceBefore
 
@@ -2978,15 +2961,9 @@ contract.only("User ('forward' cashback)", accounts => {
 				})
 
 				it("should NOT allow to execute on oracle's confirmation", async () => {
-					confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
-					await customAsserts.assertMultisigExecutionFailure({
-						tx: confirmTx,
-						transactionId,
-						userRouter: userAccount.router,
-						oracle: users.oracle,
-					})
+					await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, }).then(assert.fail, () => true)
 					await customAsserts.assertExpectations(1, 0)
-
+					
 					const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
 					assert.equal(proxyBalanceBefore.toString(16), proxyBalanceAfter.toString(16), "Proxy balance should not change")
 				})
