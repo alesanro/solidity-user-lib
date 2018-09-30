@@ -16,11 +16,12 @@ module.exports = (function() {
 		var zeroBytes = 0, nonZeroBytes = 0
 
 		for (let index = 0; index < buffer.length; index++) {
-			const element = buffer.readUInt8(index);
+			const element = buffer.readUInt8(index)
 			if (element === 0) {
-				zeroBytes += 1;
-			} else {
-				nonZeroBytes += 1;
+				zeroBytes += 1
+			}
+			else {
+				nonZeroBytes += 1
 			}
 		}
 
@@ -32,8 +33,8 @@ module.exports = (function() {
 	}
 
 	this.calldatacopyGas = function(calldata) {
-		const buffer = Buffer.from(calldata, 'hex')	
-		
+		const buffer = Buffer.from(calldata, 'hex')
+
 		return Gverylow + Gcopy * Math.pow(Gmemory, 0.75) * (buffer.length)/ WORD
 	}
 

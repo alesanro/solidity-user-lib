@@ -21,7 +21,6 @@ const eventHelpers = require("./helpers/eventsHelper")
 const utils = require("./helpers/utils")
 const web3Utils = require("web3-utils")
 const Web3Accounts = require("web3-eth-accounts")
-const BytesChecker = require('./helpers/bytes-checker')
 
 async function setupUserWorkflow({ users, }) {
 	const contracts = {
@@ -1855,7 +1854,7 @@ contract("User Workflow", accounts => {
 								data,
 								await contracts.mock.convertUIntToBytes32.call(ErrorScope.OK)
 							)
-							
+
 							const tx = await userRouter.forwardWithVRS(
 								destination,
 								data,
@@ -2415,7 +2414,6 @@ contract("User ('forward' cashback)", accounts => {
 	const reverter = new Reverter(web3)
 	const { users, } = getUsers(accounts)
 	const asyncWeb3 = new AsyncWeb3(web3)
-	const bytesChecker = new BytesChecker()
 
 	let contracts
 	let customAsserts
@@ -2519,7 +2517,7 @@ contract("User ('forward' cashback)", accounts => {
 		before(async () => {
 			await reverter.promisifySnapshot()
 			snapshotId = reverter.snapshotId
-			
+
 			await contracts.userBackend.setUseCashback(true, { from: users.contractOwner, })
 
 			await reverter.promisifySnapshot()
@@ -2585,7 +2583,7 @@ contract("User ('forward' cashback)", accounts => {
 				assert.equal(oracleBalanceBefore.toString(16), oracleBalanceAfter.toString(16))
 			})
 		})
-		
+
 		context("2FA = 'on'", () => {
 
 			before(async () => {
@@ -2594,7 +2592,7 @@ contract("User ('forward' cashback)", accounts => {
 
 			const thirdPartyOwners = [
 				[],
-				[ users.user2, ],
+				[users.user2,],
 				[ users.user2, users.user3, ],
 				[ users.user2, users.user3, users.remoteOwner1, ],
 				[ users.user2, users.user3, users.remoteOwner1, users.remoteOwner2, ],
@@ -2649,22 +2647,22 @@ contract("User ('forward' cashback)", accounts => {
 					},
 					{
 						getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - medium'}`,
-						getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,],[23,23,23,23,23,],2,100023242),
+						getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[ fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress, ],[ 23,23,23,23,23, ],2,100023242),
 					},
 					{
 						getDescription: () => `${'fakeInterface.transferToMany(address,address[],uint[],uint,uint) - long'}`,
-						getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,],[23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,],2,100023242),
+						getData: () => contracts.fakeInterface.contract.transferToMany.getData(fakeAddress,[ fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress,fakeAccountAddress, ],[ 23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23,23, ],2,100023242),
 					},
 					{
 						getDescription: () => `${'fakeInterface.rateWorkerSkills(uint,address,uint,uint,uint[],uint8[]) - medium'}`,
-						getData: () => contracts.fakeInterface.contract.rateWorkerSkills.getData(1883729878287234,fakeAddress,2828237987942,20029328492348298,[89279872,234234,2342,3534534534,345345304980980292345,2345234532452345,],[10,9,8,7,6,3,5,6,7,8]),
+						getData: () => contracts.fakeInterface.contract.rateWorkerSkills.getData(1883729878287234,fakeAddress,2828237987942,20029328492348298,[ 89279872,234234,2342,3534534534,345345304980980292345,2345234532452345, ],[ 10,9,8,7,6,3,5,6,7,8, ]),
 					},
 					{
 						getDescription: () => `${'fakeInterface.evaluateMany(address,uint,uint[],uint[],uint8[]) - short'}`,
-						getData: () => contracts.fakeInterface.contract.evaluateMany.getData(fakeAddress,897293847234,[2239234,234,23423423,11121212,],[2239234,234,23423423,11121212,],[22,55,11,111,]),
+						getData: () => contracts.fakeInterface.contract.evaluateMany.getData(fakeAddress,897293847234,[ 2239234,234,23423423,11121212, ],[ 2239234,234,23423423,11121212, ],[ 22,55,11,111, ]),
 					},
 				]
-				
+
 				for (const dataTemp of data) {
 					for (const thirdpartiesTemp of thirdPartyOwners) {
 						const dataItem = dataTemp
@@ -2708,13 +2706,13 @@ contract("User ('forward' cashback)", accounts => {
 							after(async () => {
 								await reverter.promisifyRevert(snapshotId)
 							})
-			
+
 							it("should NOT have a payment for initial 'forward", async () => {
 								initTx = await userAccount.router.forward(contracts.mock.address, data, 0, true, { from: userAccount.address, })
 								await customAsserts.assertExpectations(1, 0)
 								transactionId = await customAsserts.assertMultisigSubmitPresence({ tx: initTx, userProxy: userAccount.proxy, user: userAccount.address, })
 							})
-			
+
 							it("should have a payment after oracle's confirmation", async () => {
 								confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, gas: 400000, })
 								await customAsserts.assertMultisigExecutionPresence({
@@ -2725,7 +2723,7 @@ contract("User ('forward' cashback)", accounts => {
 								})
 								await customAsserts.assertExpectations(0, 1)
 							})
-			
+
 							it("should have payed back results", async () => {
 								const fullTx = await asyncWeb3.getTx(confirmTx.tx)
 								const txRealGas = (await asyncWeb3.getTxReceipt(confirmTx.tx)).gasUsed
@@ -2848,7 +2846,7 @@ contract("User ('forward' cashback)", accounts => {
 							before(async () => {
 								await reverter.promisifySnapshot()
 								snapshotId = reverter.snapshotId
-								
+
 								await asyncWeb3.sendEth({ from: userAccount.address, to: userAccount.proxyAddress, value: sentEther, })
 
 								for (const thirdpartyOwner of thirdparties) {
@@ -2857,19 +2855,19 @@ contract("User ('forward' cashback)", accounts => {
 									await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
 								}
 							})
-							
+
 							after(async () => {
 								await reverter.promisifyRevert(snapshotId)
 							})
-							
+
 							it("initial invocation is successful", async () => {
 								initTx = await injectedDataItem.executeInitial()
 								transactionId = await customAsserts.assertMultisigSubmitPresence({ tx: initTx, userProxy: userAccount.proxy, user: userAccount.address, })
-								
+
 								proxyBalanceBefore = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
 								oracleBalanceBefore = await asyncWeb3.getEthBalance(users.oracle)
 							})
-							
+
 							it("should have a payment after oracle's confirmation ", async () => {
 								confirmTx = await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, })
 								await customAsserts.assertMultisigExecutionPresence({
@@ -2879,14 +2877,14 @@ contract("User ('forward' cashback)", accounts => {
 									oracle: users.oracle,
 								})
 							})
-							
+
 							it("should have payed back results", async () => {
 								const fullTx = await asyncWeb3.getTx(confirmTx.tx)
 								const txRealGas = (await asyncWeb3.getTxReceipt(confirmTx.tx)).gasUsed
 								const txRealExpenses = await asyncWeb3.getTxExpences(confirmTx.tx)
 								const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
 								const oracleBalanceAfter = await asyncWeb3.getEthBalance(users.oracle)
-		
+
 								const cashbackValue = await proxyBalanceBefore.sub(proxyBalanceAfter)
 								const cashbackGas = cashbackValue.div(fullTx.gasPrice)
 								const cashbackOverpricedAbsolute = cashbackValue.sub(txRealExpenses)
@@ -2908,7 +2906,7 @@ contract("User ('forward' cashback)", accounts => {
 								// # - cashback value: ${cashbackValue.toString()}
 								// # - oracle received back: ${web3.fromWei((oracleBalanceAfter.sub(oracleBalanceBefore)), "ether")}
 								// # - earning by oracle: ${oracleBalanceAfter.sub(oracleBalanceBefore).toString()}
-		
+
 								assert.isAtLeast(cashbackValue.toNumber(), txRealExpenses.toNumber(), "Cashback doesn't cover tx expenses of an oracle")
 								assert.isAtMost(cashbackOverpricedPercent.toNumber(), 0.1, `Cashback shouldn't exceed real expenses more than for max percent`)
 								assert.isAtMost(cashbackGas.sub(txRealGas).toNumber(), 200, `Cashback return gas shouldn't exceed spent gas greater than on 200 gas`)
@@ -2963,14 +2961,14 @@ contract("User ('forward' cashback)", accounts => {
 				it("should NOT allow to execute on oracle's confirmation", async () => {
 					await userAccount.router.confirmTransaction(transactionId, { from: users.oracle, }).then(assert.fail, () => true)
 					await customAsserts.assertExpectations(1, 0)
-					
+
 					const proxyBalanceAfter = await asyncWeb3.getEthBalance(userAccount.proxyAddress)
 					assert.equal(proxyBalanceBefore.toString(16), proxyBalanceAfter.toString(16), "Proxy balance should not change")
 				})
 			})
 		})
 	})
-	
+
 	context("cashback = 'off'", () => {
 
 		context("2FA = 'on' (one of default states and already tested)", () => {})
