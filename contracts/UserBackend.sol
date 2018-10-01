@@ -29,8 +29,15 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     uint constant ROUTER_DELEGATECALL_ESTIMATION = 1153;
     /// @dev gas taken before startCashbackEstimation() modifier by 'confirmTransaction' function
     uint constant CASHBACK_CONFIRMATION_BEFORE_ESTIMATION = 3327; 
+    /// @dev gas taken before startCashbackEstimation() modifier by 'forward' function
+    uint constant CASHBACK_FORWARD_BEFORE_ESTIMATION = 3933;
+    /// @dev gas taken before startCashbackEstimation() modifier by 'forwardWithVRS' function
+    uint constant CASHBACK_FORWARD_VRS_BEFORE_ESTIMATION = 3050;
     /// @dev gas taken by _transferCashback modifier
     uint constant CASHBACK_TRANSFER_ESTIMATION = 10525;
+
+    uint constant ORACLE_ACCOUNT_GROUP = 0x0001;
+    uint constant THIRDPARTY_ACCOUNT_GROUP = 0x0010;
 
     bytes32 public version = "1.1.0";
 
@@ -58,7 +65,7 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
         }
     }
 
-    modifier onlyMultiownedWithRemoteOwners {
+    modifier onlyMultiownedWithRemoteOwners(bytes32[5] memory _cashbackPresets) {
         if ((!use2FA && _isOneOfOwners(msg.sender)) ||
             msg.sender == address(this)
         ) {
@@ -66,6 +73,7 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
         }
         else if (use2FA && _isOneOfOwners(msg.sender)) {
             submitTransaction(address(this), msg.value, msg.data);
+            _estimateCashbackAndPay(_cashbackPresets, true);
             assembly {
                 mstore(0, 3) /// MULTISIG_ADDED
                 return(0, 32)
@@ -342,8 +350,22 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
         bool _throwOnFailedCall
     )
     public
+    returns (bytes32) 
+    {
+        return _forward(_destination, _data, _value, _throwOnFailedCall, [bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0)]);
+    }
+
+    function _forward(
+        address _destination,
+        bytes _data,
+        uint _value,
+        bool _throwOnFailedCall,
+        bytes32[5] _cashbackPresets
+    )
+    private
+    bindCashbackPresets(_cashbackPresets, 0, CASHBACK_FORWARD_BEFORE_ESTIMATION, THIRDPARTY_ACCOUNT_GROUP)
     onlyCall
-    onlyMultiownedWithRemoteOwners
+    onlyMultiownedWithRemoteOwners(_cashbackPresets)
     returns (bytes32) 
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
@@ -356,13 +378,26 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
         uint _value,
         bool _throwOnFailedCall,
         bytes _pass,
-        uint8 _v,
-        bytes32 _r,
-        bytes32 _s
+        bytes32[3] _signerParams
     )
     public
+    estimateCashbackAndPay(0, CASHBACK_FORWARD_VRS_BEFORE_ESTIMATION, THIRDPARTY_ACCOUNT_GROUP, true)
+    returns (bytes32)
+    {
+        return _forwardWithVRS(_destination, _data, _value, _throwOnFailedCall, _pass, _signerParams);
+    }
+
+    function _forwardWithVRS(
+        address _destination,
+        bytes _data,
+        uint _value,
+        bool _throwOnFailedCall,
+        bytes _pass,
+        bytes32[3] _signerParams
+    )
+    private
     onlyCall
-    onlyVerifiedWithRemoteOwners(getMessageForForward(msg.sender, _destination, _data, _value, _pass), _v, _r, _s)
+    onlyVerifiedWithRemoteOwners(getMessageForForward(msg.sender, _destination, _data, _value, _pass), uint8(_signerParams[0]), _signerParams[1], _signerParams[2])
     returns (bytes32)
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
@@ -447,13 +482,17 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
 
     function confirmTransaction(uint transactionId)
     public
-    estimateCashbackAndPay(0, CASHBACK_CONFIRMATION_BEFORE_ESTIMATION)
+    estimateCashbackAndPay(0, CASHBACK_CONFIRMATION_BEFORE_ESTIMATION, ORACLE_ACCOUNT_GROUP, false)
     {   
         super.confirmTransaction(transactionId);
     }
 
-    function _shouldPayCashback() internal view returns (bool) {
-        return isUsingCashback() && msg.sender == getOracle();
+    function _shouldPayCashback(uint _allowedUserGroups) internal view returns (bool) {
+        return isUsingCashback()
+            && (
+                ((_allowedUserGroups & ORACLE_ACCOUNT_GROUP) != 0 && msg.sender == getOracle())
+                || ((_allowedUserGroups & THIRDPARTY_ACCOUNT_GROUP) != 0 && isThirdPartyOwner(msg.sender))
+            );
     }
 
     function _getBeforeExecutionGasEstimation(uint _beforeFunctionEstimation) internal view returns (uint) {
