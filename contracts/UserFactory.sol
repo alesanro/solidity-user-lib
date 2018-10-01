@@ -103,17 +103,20 @@ contract UserFactory is Roles2LibraryAdapter, MultiEventsHistoryAdapter {
     /// @return result of an operation
     function createUserWithProxyAndRecovery(
         address _owner,
-        bool _use2FA
+        bool _use2FA,
+        address[] _thirdparties
     )
     public
+    payable
     returns (uint) 
     {
         UserInterface user = UserInterface(new UserRouter(_owner, userRecoveryAddress, userBackendProvider));
-        user.init(oracle, _use2FA);
+        user.init(oracle, _use2FA, _thirdparties);
 
         _addUserToRegistry(address(user));
 
         address proxy = user.getUserProxy();
+        proxy.transfer(msg.value);
         UserFactory(getEventsHistory()).emitUserCreated(
             user,
             proxy,

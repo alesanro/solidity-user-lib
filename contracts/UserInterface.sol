@@ -12,7 +12,7 @@ import "./UserEmitter.sol";
 
 /// @title Interface of a User that is created by UserFactory. Supports multisig operations.
 contract UserInterface is ThirdPartyMultiSig, UserEmitter {
-    function init(address _oracle, bool _enable2FA) external returns (uint);
+    function init(address _oracle, bool _enable2FA, address[] _thirdparties) external returns (uint);
     function getUserProxy() external view returns (address);
     function setUserProxy(address _userProxy) external returns (uint);
     function use2FA() external view returns (bool);
