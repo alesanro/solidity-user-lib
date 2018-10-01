@@ -1894,6 +1894,7 @@ contract("User Workflow", accounts => {
 
 				it("should show that original owner is not 3rd party owner", async () => {
 					assert.isFalse(await userRouter.isThirdPartyOwner.call(user), "Original owner should not be 3rd party owner")
+					assert.isFalse(await contracts.userRegistry.isThirdPartyManagingProxy.call(user, userProxy.address), "Original owner should NOT be a 3rd-party owner in UserRegistry")
 					assert.lengthOf(await userRouter.getThirdPartyOwners.call(), 0, "3rd party owners list should be empty")
 				})
 
@@ -1942,6 +1943,7 @@ contract("User Workflow", accounts => {
 						assert.isFalse(await userRouter.isThirdPartyOwner.call(user), "Original owner should not be 3rd party owner")
 						assert.isTrue(await userRouter.isThirdPartyOwner.call(users.remoteOwner1), "Remote owner should become a 3rd party owner")
 						assert.include(await userRouter.getThirdPartyOwners.call(), users.remoteOwner1, "Remote owner should be included in list of 3rd party owners")
+						assert.isTrue(await contracts.userRegistry.isThirdPartyManagingProxy.call(users.remoteOwner1, userProxy.address), "Remote owner should be as 3rd-party owner in UserRegistry")
 					})
 
 					it("should NOT allow by 3rd party owner with UNAUTHORIZED code", async () => {
@@ -2021,6 +2023,7 @@ contract("User Workflow", accounts => {
 						assert.isFalse(await userRouter.isThirdPartyOwner.call(user), "Original owner should not be 3rd party owner")
 						assert.isFalse(await userRouter.isThirdPartyOwner.call(users.remoteOwner1), "Revoked remote owner should not be a 3rd party owner anymore")
 						assert.notInclude(await userRouter.getThirdPartyOwners.call(), users.remoteOwner1, "Revoked remote owner should not be included in list of 3rd party owners")
+						assert.isFalse(await contracts.userRegistry.isThirdPartyManagingProxy.call(users.remoteOwner1, userProxy.address), "Remote owner should NOT be as 3rd-party owner in UserRegistry")
 					})
 				})
 
@@ -2410,7 +2413,7 @@ contract("User Workflow", accounts => {
 })
 
 
-contract("User ('forward' cashback)", accounts => {
+contract("User (cashback)", accounts => {
 	const reverter = new Reverter(web3)
 	const { users, privateKeys, } = getUsers(accounts)
 	const messageComposer = new MessageComposer(web3, privateKeys)

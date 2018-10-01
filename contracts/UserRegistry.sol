@@ -10,6 +10,7 @@ import "solidity-storage-lib/contracts/StorageAdapter.sol";
 import "solidity-roles-lib/contracts/Roles2LibraryAdapter.sol";
 import "solidity-eventshistory-lib/contracts/MultiEventsHistoryAdapter.sol";
 import "./UserOwnershipListenerInterface.sol";
+import "./UserInterface.sol";
 
 
 /// @title Acts like a registry for existed users across a system.
@@ -156,6 +157,20 @@ contract UserRegistry is StorageAdapter, Roles2LibraryAdapter, MultiEventsHistor
     {
         address _userRouter = Owned(_accountProxy).contractOwner();
         return _account == Owned(_userRouter).contractOwner();
+    }
+
+    /// @notice Gets if provided `_thirdpartyOwner` is actually a third-party address that manages
+    ///     `_accountProxy` proxy address. It is supposed that userRouter implements 
+    ///     ThirdPartyMultiSig#isThirdPartyOwner(address) function.
+    /// @param _thirdpartyOwner server account that could manage user's operations
+    /// @param _accountProxy user proxy contract or UserInterface#getUserProxy()
+    /// @return 'true' if an account has third-party access to user proxy, 'false' otherwise
+    function isThirdPartyManagingProxy(address _thirdpartyOwner, address _accountProxy) 
+    public 
+    view 
+    returns (bool) {
+        address _userRouter = Owned(_accountProxy).contractOwner();
+        return UserInterface(_userRouter).isThirdPartyOwner(_thirdpartyOwner);
     }
 
     /* EVENTS EMITTING (for events history) */
