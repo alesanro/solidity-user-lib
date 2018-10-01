@@ -11,17 +11,43 @@ import "./ThirdPartyMultiSig.sol";
 import "./UserBase.sol";
 import "./UserEmitter.sol";
 import "./UserRegistry.sol";
+import "./Cashback.sol";
 
 
 /// @title Utilized as a library contract that receives delegated calls from frontend contracts
 /// and provides two-factor authentication confirmation for its functions. 
 /// See UserInterface contract for centralized information about frontend contract interface.
-contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
+contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
+
+    event ReceivedEther(address sender, uint value);
 
     uint constant OK = 1;
     uint constant MULTISIG_ADDED = 3;
 
+    /// @dev Cashback gas estimations about methods that cannot be measured from inside of the contract.
+    /// @dev gas without one callcodecopy estimation taken by BaseByzantiumRouter
+    uint constant ROUTER_DELEGATECALL_ESTIMATION = 1153;
+    /// @dev gas taken before startCashbackEstimation() modifier by 'confirmTransaction' function
+    uint constant CASHBACK_CONFIRMATION_BEFORE_ESTIMATION = 3327; 
+    /// @dev gas taken before startCashbackEstimation() modifier by 'forward' function
+    uint constant CASHBACK_FORWARD_BEFORE_ESTIMATION = 3933;
+    /// @dev gas taken before startCashbackEstimation() modifier by 'forwardWithVRS' function
+    uint constant CASHBACK_FORWARD_VRS_BEFORE_ESTIMATION = 3050;
+    /// @dev gas taken by _transferCashback modifier
+    uint constant CASHBACK_TRANSFER_ESTIMATION = 10525;
+
+    uint constant ORACLE_ACCOUNT_GROUP = 0x0001;
+    uint constant THIRDPARTY_ACCOUNT_GROUP = 0x0010;
+
     bytes32 public version = "1.1.0";
+
+    /// @dev TODO:
+    bool private useCashback = false;
+
+    /// @dev Used as temp variable to store refund value for storage value deletion
+    ///     when their final value is calculated after transaction is executed.
+    ///     It always should be nullified before transaction is mined.
+    uint private gasRefund;
 
     /// @dev Guards and organizes 2FA access when it's turned on.
     modifier onlyMultiowned(address _initiator) {
@@ -39,7 +65,7 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         }
     }
 
-    modifier onlyMultiownedWithRemoteOwners {
+    modifier onlyMultiownedWithRemoteOwners(bytes32[5] memory _cashbackPresets) {
         if ((!use2FA && _isOneOfOwners(msg.sender)) ||
             msg.sender == address(this)
         ) {
@@ -47,6 +73,7 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         }
         else if (use2FA && _isOneOfOwners(msg.sender)) {
             submitTransaction(address(this), msg.value, msg.data);
+            _estimateCashbackAndPay(_cashbackPresets, true);
             assembly {
                 mstore(0, 3) /// MULTISIG_ADDED
                 return(0, 32)
@@ -94,6 +121,40 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         _;
     }
 
+    modifier onlyContractContext {
+        require(_isContractContext(), "USER_INVALID_INVOCATION_CONTEXT");
+        _;
+    }
+
+
+    /// @notice Gets flag either cashback functionality turned on or off
+    /// @return user registry contract address
+    function isUsingCashback()
+    public
+    view
+    returns (bool)
+    {
+        if (_isContractContext()) {
+            return useCashback;
+        }
+
+        return UserBackend(backendProvider.getUserBackend()).isUsingCashback();
+    }
+
+    /// @notice Sets cashback functionality in active or inactive state only for UserBackend (as a library).
+    /// Allowed only for authorized roles.
+    /// @param _useCashback flag of cashback functionality; true if the functionality should be active, false otherwise
+    /// @return result of an operation
+    function setUseCashback(bool _useCashback)
+    external
+    onlyContractOwner
+    onlyContractContext
+    returns (uint)
+    {
+        useCashback = _useCashback;
+        return OK;
+    }
+
     /// @notice Initializes frontend contract with oracle and 2FA flag.
     /// Should be invoked by an issuer and before any other actions.
     /// Should be called only through delegatecall.
@@ -121,7 +182,7 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     external
     onlyCall
     onlyMultiowned(contractOwner)
-    returns (uint) 
+    returns (uint)
     {
         require(getOracle() != 0x0, "Oracle must be set before 2FA activation");
 
@@ -139,7 +200,7 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     /// @param _userProxy new user proxy contract address
     /// @return result of an operation
     function setUserProxy(UserProxy _userProxy) 
-    public 
+    public
     onlyCall
     onlyMultiowned(contractOwner)
     returns (uint) 
@@ -170,27 +231,41 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
     onlyMultiowned(contractOwner)
     returns (uint)
     {
-        _setOracle(_oracle);
+        _setOracleImpl(_oracle);
+
+        // NOTE: for accurate cashback final value
+        //      Should be nullified afterwards
+        if (use2FA) {
+            gasRefund += ETHEREUM_STORAGE_OVERWRITE_GAS_REFUND;
+        }
         return OK;
     }
 
+    /// @notice TODO:
     function addThirdPartyOwner(address _owner)
     external
     onlyCall
     onlyMultiowned(contractOwner)
     returns (uint)
     {
-        _addThirdPartyOwner(_owner);
+        _addThirdPartyOwnerImpl(_owner);
         return OK;
     }
 
+    /// @notice TODO:
     function revokeThirdPartyOwner(address _owner)
     external
     onlyCall
     onlyMultiowned(contractOwner)
     returns (uint)
     {
-        _revokeThirdPartyOwner(_owner);
+        _revokeThirdPartyOwnerImpl(_owner);
+
+        // NOTE: for accurate cashback final value.
+        //      Should be nullified afterwards
+        if (use2FA) {
+            gasRefund += 2 * ETHEREUM_STORAGE_OVERWRITE_GAS_REFUND;
+        }
         return OK;
     }
 
@@ -275,26 +350,54 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         bool _throwOnFailedCall
     )
     public
+    returns (bytes32) 
+    {
+        return _forward(_destination, _data, _value, _throwOnFailedCall, [bytes32(0), bytes32(0), bytes32(0), bytes32(0), bytes32(0)]);
+    }
+
+    function _forward(
+        address _destination,
+        bytes _data,
+        uint _value,
+        bool _throwOnFailedCall,
+        bytes32[5] _cashbackPresets
+    )
+    private
+    bindCashbackPresets(_cashbackPresets, 0, CASHBACK_FORWARD_BEFORE_ESTIMATION, THIRDPARTY_ACCOUNT_GROUP)
     onlyCall
-    onlyMultiownedWithRemoteOwners
+    onlyMultiownedWithRemoteOwners(_cashbackPresets)
     returns (bytes32) 
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
     }
 
+    /// @notice TODO:
     function forwardWithVRS(
         address _destination,
         bytes _data,
         uint _value,
         bool _throwOnFailedCall,
         bytes _pass,
-        uint8 _v,
-        bytes32 _r,
-        bytes32 _s
+        bytes32[3] _signerParams
     )
     public
+    estimateCashbackAndPay(0, CASHBACK_FORWARD_VRS_BEFORE_ESTIMATION, THIRDPARTY_ACCOUNT_GROUP, true)
+    returns (bytes32)
+    {
+        return _forwardWithVRS(_destination, _data, _value, _throwOnFailedCall, _pass, _signerParams);
+    }
+
+    function _forwardWithVRS(
+        address _destination,
+        bytes _data,
+        uint _value,
+        bool _throwOnFailedCall,
+        bytes _pass,
+        bytes32[3] _signerParams
+    )
+    private
     onlyCall
-    onlyVerifiedWithRemoteOwners(getMessageForForward(msg.sender, _destination, _data, _value, _pass), _v, _r, _s)
+    onlyVerifiedWithRemoteOwners(getMessageForForward(msg.sender, _destination, _data, _value, _pass), uint8(_signerParams[0]), _signerParams[1], _signerParams[2])
     returns (bytes32)
     {
         return userProxy.forward(_destination, _data, _value, _throwOnFailedCall);
@@ -375,11 +478,60 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig {
         return keccak256(abi.encodePacked(_pass, _sender, _destination, _data, _value));
     }
 
+    /* CASHBACK */
+
+    function confirmTransaction(uint transactionId)
+    public
+    estimateCashbackAndPay(0, CASHBACK_CONFIRMATION_BEFORE_ESTIMATION, ORACLE_ACCOUNT_GROUP, false)
+    {   
+        super.confirmTransaction(transactionId);
+    }
+
+    function _shouldPayCashback(uint _allowedUserGroups) internal view returns (bool) {
+        return isUsingCashback()
+            && (
+                ((_allowedUserGroups & ORACLE_ACCOUNT_GROUP) != 0 && msg.sender == getOracle())
+                || ((_allowedUserGroups & THIRDPARTY_ACCOUNT_GROUP) != 0 && isThirdPartyOwner(msg.sender))
+            );
+    }
+
+    function _getBeforeExecutionGasEstimation(uint _beforeFunctionEstimation) internal view returns (uint) {
+        return ROUTER_DELEGATECALL_ESTIMATION + _beforeFunctionEstimation;
+    }
+
+    /// @dev Highly depends on _transferCashback function implementation and all subsequent calls. Any changes in this
+    ///     function should be depicted in updating _getTransferCashbackEstimation value.
+    function _getTransferCashbackEstimation() internal pure returns (uint) {
+        return CASHBACK_TRANSFER_ESTIMATION;
+    }
+
+    /// @notice Transfers caclulated cashback directly to a caller
+    function _transferCashback(address _from, uint _cashbackValue, address _to) internal {
+        UserProxy(_from).transferEther(_to, _cashbackValue);
+    }
+
+    function _getWallet() internal view returns (address) {
+        return userProxy;
+    }
+
+    function _getOperationsRefund() internal view returns (uint) {
+        return gasRefund;
+    }
+
+    function _nullifyOperationsRefund() internal {
+        delete gasRefund;
+    }
+
     /* INTERNAL */
+
+    function _isContractContext() private view returns (bool) {
+        // backend provider will be always 0x0 in the context of UserBackend
+        return address(backendProvider) == 0x0;
+    }
 
     function _allowDelegateCall() private view returns (bool) {
         // make sure this is used by delegatecall
-        if (address(backendProvider) == 0x0) {
+        if (_isContractContext()) {
             return false;
         }
 

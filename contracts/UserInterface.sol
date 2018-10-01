@@ -36,8 +36,6 @@ contract UserInterface is ThirdPartyMultiSig, UserEmitter {
         uint _value,
         bool _throwOnFailedCall,
         bytes _pass,
-        uint8 _v,
-        bytes32 _r,
-        bytes32 _s
+        bytes32[3] _signerParams
         ) external returns (bytes32);
 }
