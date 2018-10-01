@@ -161,14 +161,23 @@ contract UserBackend is Owned, UserBase, ThirdPartyMultiSig, Cashback {
     /// @param _oracle oracle address for 2FA mode
     /// @param _enable2FA if true enables 2FA mode, false - keep it turned off
     /// @return result of an operation
-    function init(address _oracle, bool _enable2FA)
+    function init(address _oracle, bool _enable2FA, address[] _thirdparties)
     external
     onlyCall
     onlyIssuer
     returns (uint)
     {
         _init(contractOwner, _oracle);
+        
+        for (uint _idx = 0; _idx < _thirdparties.length; ++_idx) {
+            address _thirdparty = _thirdparties[_idx];
+            if (_thirdparty != 0x0) {
+                this.addThirdPartyOwner(_thirdparty);
+            }
+        }
+
         this.set2FA(_enable2FA);
+
         return OK;
     }
 

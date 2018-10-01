@@ -266,10 +266,11 @@ function AsyncWeb3(web3) {
 	}
 }
 
-contract("User Workflow", accounts => {
+contract.only("User Workflow", accounts => {
 	const reverter = new Reverter(web3)
 	const { users, privateKeys, } = getUsers(accounts)
 	const messageComposer = new MessageComposer(web3, privateKeys)
+	const asyncWeb3 = new AsyncWeb3(web3)
 
 	let contracts
 	let customAsserts
@@ -425,7 +426,7 @@ contract("User Workflow", accounts => {
 			})
 
 			it("should THROW and NOT allow to initialize UserBackend by direct call", async () => {
-				await contracts.userBackend.init(users.oracle, false, { from: users.contractOwner, }).then(assert.fail, () => true)
+				await contracts.userBackend.init(users.oracle, false, [], { from: users.contractOwner, }).then(assert.fail, () => true)
 			})
 
 			it("should have 0x0 user proxy property", async () => {
@@ -624,11 +625,11 @@ contract("User Workflow", accounts => {
 			const nonIssuer = users.user2
 			const stubUser = await UserRouter.new(user, users.recovery, contracts.userBackendProvider.address, { from: issuer, })
 			assert.equal(
-				(await UserInterface.at(stubUser.address).init.call(users.oracle, true, { from: nonIssuer, })).toNumber(),
+				(await UserInterface.at(stubUser.address).init.call(users.oracle, true, [], { from: nonIssuer, })).toNumber(),
 				ErrorScope.UNAUTHORIZED
 			)
 
-			await UserInterface.at(stubUser.address).init(users.oracle, true, { from: nonIssuer, })
+			await UserInterface.at(stubUser.address).init(users.oracle, true, [], { from: nonIssuer, })
 			await UserInterface.at(stubUser.address).getOracle().then(assert.fail, () => true)
 			assert.isFalse(await UserInterface.at(stubUser.address).use2FA.call())
 		})
@@ -637,11 +638,11 @@ contract("User Workflow", accounts => {
 			const issuer = users.user3
 			const stubUser = await UserRouter.new(user, users.recovery, contracts.userBackendProvider.address, { from: issuer, })
 			assert.equal(
-				(await UserInterface.at(stubUser.address).init.call(users.oracle, true, { from: issuer, })).toNumber(),
+				(await UserInterface.at(stubUser.address).init.call(users.oracle, true, [], { from: issuer, })).toNumber(),
 				ErrorScope.OK
 			)
 
-			await UserInterface.at(stubUser.address).init(users.oracle, true, { from: issuer, })
+			await UserInterface.at(stubUser.address).init(users.oracle, true, [], { from: issuer, })
 			assert.equal(
 				await UserInterface.at(stubUser.address).getOracle.call(),
 				users.oracle
@@ -650,7 +651,7 @@ contract("User Workflow", accounts => {
 		})
 
 		it("should THROW and NOT allow to create a user without an owner", async () => {
-			await contracts.userFactory.createUserWithProxyAndRecovery(utils.zeroAddress, false, { from: user, }).then(assert.fail, () => true)
+			await contracts.userFactory.createUserWithProxyAndRecovery(utils.zeroAddress, false, [], { from: user, }).then(assert.fail, () => true)
 		})
 
 		it("should THROW and NOT allow to create a user without backend provider", async () => {
@@ -664,7 +665,7 @@ contract("User Workflow", accounts => {
 		})
 
 		it("should be able to create a new user", async () => {
-			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, false, { from: user, })
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, false, [], { from: user, })
 			{
 				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
 				assert.isDefined(event)
@@ -683,12 +684,34 @@ contract("User Workflow", accounts => {
 			}
 		})
 
+		it("should allow to create a user with thirdparties and with value", async () => {
+			const initialWalletValue = web3.toWei('1', 'ether')
+			const stubUser = {
+				address: null,
+				proxyAddress: null,
+			}
+
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, false, [users.user2,], { from: user, value: initialWalletValue, })
+			{
+				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
+				stubUser.address = event.args.user
+				stubUser.proxyAddress = event.args.proxy
+			}
+
+			assert.equal(
+				(await asyncWeb3.getEthBalance(stubUser.proxyAddress)).toString(16),
+				web3.toBigNumber(initialWalletValue).toString(16),
+				"Initial proxy balance should be not empty"
+			)
+			assert.isTrue((await UserInterface.at(stubUser.address).isThirdPartyOwner(users.user2)))
+		})
+
 		it("should be able to create a new user with no set up user registry", async () => {
 			await reverter.promisifySnapshot()
 			const snapshotId = reverter.snapshotId
 
 			await contracts.userBackendProvider.setUserRegistry(0x0, { from: users.contractOwner, })
-			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, false, { from: user, })
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, false, [], { from: user, })
 			{
 				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
 				assert.isDefined(event)
@@ -725,7 +748,7 @@ contract("User Workflow", accounts => {
 
 		it("should NOT allow to initialize newly created user from UserFactory with UNAUTHORIZED code", async () => {
 			assert.equal(
-				(await UserInterface.at(userRouterAddress).init.call(users.oracle, false, { from: user, })).toNumber(),
+				(await UserInterface.at(userRouterAddress).init.call(users.oracle, false, [], { from: user, })).toNumber(),
 				ErrorScope.UNAUTHORIZED
 			)
 		})
@@ -749,7 +772,7 @@ contract("User Workflow", accounts => {
 		})
 
 		it("user should be able to forward a call by a user", async () => {
-			const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+			const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 			await contracts.mock.expect(
 				userProxyAddress,
 				0,
@@ -923,7 +946,7 @@ contract("User Workflow", accounts => {
 		})
 
 		it("should allow to create a user with 'use2FA = true'", async () => {
-			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, true, { from: user, })
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, true, [], { from: user, })
 			{
 				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
 				assert.isDefined(event)
@@ -941,7 +964,7 @@ contract("User Workflow", accounts => {
 		let snapshotId
 
 		before(async () => {
-			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, false, { from: user, })
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(user, false, [], { from: user, })
 			{
 				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
 				userRouter = UserInterface.at(event.args.user)
@@ -1000,7 +1023,7 @@ contract("User Workflow", accounts => {
 			})
 
 			it("and forward should NOT go through old proxy", async () => {
-				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 				await contracts.mock.expect(
 					userProxy.address,
 					0,
@@ -1013,7 +1036,7 @@ contract("User Workflow", accounts => {
 			})
 
 			it("and forward should go through a new proxy", async () => {
-				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 				await contracts.mock.expect(
 					newUserProxy.address,
 					0,
@@ -1045,7 +1068,7 @@ contract("User Workflow", accounts => {
 			})
 
 			it("and forward function should NOT have 'BumpedUserBackendEvent' event emitted", async () => {
-				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 				await contracts.mock.expect(
 					userProxy.address,
 					0,
@@ -1073,7 +1096,7 @@ contract("User Workflow", accounts => {
 			})
 
 			it("and forward function should have 'BumpedUserBackendEvent' event emitted", async () => {
-				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+				const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 				await contracts.mock.expect(
 					userProxy.address,
 					0,
@@ -1191,7 +1214,7 @@ contract("User Workflow", accounts => {
 				let data
 
 				before(async () => {
-					data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+					data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 				})
 
 				after(async () => {
@@ -1210,7 +1233,7 @@ contract("User Workflow", accounts => {
 				})
 
 				it("and should allow to call forward with 2FA = 'false' immediately", async () => {
-					const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+					const data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 					await contracts.mock.expect(
 						userProxy.address,
 						0,
@@ -1592,7 +1615,7 @@ contract("User Workflow", accounts => {
 			let data
 
 			before(async () => {
-				data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+				data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 			})
 
 			after(async () => {
@@ -1756,7 +1779,7 @@ contract("User Workflow", accounts => {
 						let invalidSendData
 
 						before(async () => {
-							invalidSendData = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(users.user2, true)
+							invalidSendData = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(users.user2, true, [])
 							message = messageComposer.composeForwardMessageFrom({
 								pass, sender: user, destination: contracts.mock.address, data, value: 0,
 							})
@@ -2039,7 +2062,7 @@ contract("User Workflow", accounts => {
 						await reverter.promisifySnapshot()
 
 						// setup
-						data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+						data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 
 						await userRouter.addThirdPartyOwner(remoteOwner, { from: user, })
 					})
@@ -2343,7 +2366,7 @@ contract("User Workflow", accounts => {
 						let data
 
 						before(async () => {
-							data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false)
+							data = contracts.userFactory.contract.createUserWithProxyAndRecovery.getData(user, false, [])
 						})
 
 						afterEach(async () => {
@@ -2438,7 +2461,7 @@ contract("User (cashback)", accounts => {
 		customAsserts = new CustomAsserts(contracts)
 
 		{
-			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(userAccount.address, false, { from: userAccount.address, })
+			const tx = await contracts.userFactory.createUserWithProxyAndRecovery(userAccount.address, false, [], { from: userAccount.address, })
 			{
 				const event = (await eventHelpers.findEvent([contracts.userFactory,], tx, "UserCreated"))[0]
 				assert.isDefined(event)
